@@ -47,6 +47,18 @@
         "inGame": false,
         "voice": true
     },
+    "lockedCrateOilRigRespawnedSetting": {
+        "image": "locked_crate_logo.png",
+        "discord": true,
+        "inGame": false,
+        "voice": true
+    },
+    "lockedCrateOilRigCountdownSetting": {
+        "image": "locked_crate_logo.png",
+        "discord": true,
+        "inGame": false,
+        "voice": true
+    },
     "heavyScientistCalledSetting": {
         "image": "oil_rig_logo.png",
         "discord": true,

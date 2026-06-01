@@ -57,9 +57,17 @@ module.exports = {
     DEFAULT_CARGO_SHIP_EGRESS_TIME_MS: 50 * 60 * 1000, /* 50 min */
     DEFAULT_OIL_RIG_LOCKED_CRATE_UNLOCK_TIME_MS: 15 * 60 * 1000, /* 15 min */
 
+    /* Locked Crate hacking countdown notifications (time remaining before unlock) */
+    OIL_RIG_LOCKED_CRATE_COUNTDOWN_TIMES_MS: [
+        10 * 60 * 1000, /* 5 min into the hack -> 10 min remaining */
+        5 * 60 * 1000,  /* 10 min into the hack -> 5 min remaining */
+        1 * 60 * 1000   /* 14 min into the hack -> 1 min remaining */
+    ],
+
     /* Other constants */
     PATROL_HELI_DOWNED_RADIUS: 400,
     OIL_RIG_CHINOOK_47_MAX_SPAWN_DISTANCE: 550,
+    OIL_RIG_LOCKED_CRATE_MAX_DISTANCE: 100,
     PROXIMITY_SETTING_DEFAULT_METERS: 500,
     HARBOR_DOCK_DISTANCE: 100,
 
@@ -93,6 +101,8 @@ module.exports = {
     COLOR_INACTIVE: '#FF0040',
     COLOR_LOCKED_CRATE_LARGE_OILRIG_UNLOCKED: '#FF69B4',
     COLOR_LOCKED_CRATE_SMALL_OILRIG_UNLOCKED: '#00FA9A',
+    COLOR_LOCKED_CRATE_OILRIG_RESPAWNED: '#FFA500',
+    COLOR_LOCKED_CRATE_OILRIG_COUNTDOWN: '#FF8C00',
     COLOR_NEW_VENDING_MACHINE: '#F08080',
     COLOR_PATROL_HELICOPTER_ENTERS_MAP: '#DC143C',
     COLOR_PATROL_HELICOPTER_LEFT_MAP: '#FFD700',

@@ -1438,19 +1438,20 @@ class RustPlus extends RustPlusLib {
 
     getCommandLarge(isInfoChannel = false) {
         const strings = [];
-        if (this.mapMarkers.crateLargeOilRigTimer) {
-            const time = Timer.getTimeLeftOfTimer(this.mapMarkers.crateLargeOilRigTimer);
+        const activeLarge = this.mapMarkers.getActiveOilRigCrateTimers('large');
+        for (const rig of activeLarge) {
+            const time = Timer.getTimeLeftOfTimer(rig.unlockTimer);
             if (time) {
                 if (isInfoChannel) {
                     return Client.client.intlGet(this.guildId, 'timeUntilUnlocksAt', {
-                        time: Timer.getTimeLeftOfTimer(this.mapMarkers.crateLargeOilRigTimer, 's'),
-                        location: this.mapMarkers.crateLargeOilRigLocation
+                        time: Timer.getTimeLeftOfTimer(rig.unlockTimer, 's'),
+                        location: rig.location
                     });
                 }
                 else {
                     strings.push(Client.client.intlGet(this.guildId, 'timeBeforeCrateAtLargeOilRigUnlocks', {
                         time: time,
-                        location: this.mapMarkers.crateLargeOilRigLocation
+                        location: rig.location
                     }));
                 }
             }
@@ -2305,19 +2306,20 @@ class RustPlus extends RustPlusLib {
 
     getCommandSmall(isInfoChannel = false) {
         const strings = [];
-        if (this.mapMarkers.crateSmallOilRigTimer) {
-            const time = Timer.getTimeLeftOfTimer(this.mapMarkers.crateSmallOilRigTimer);
+        const activeSmall = this.mapMarkers.getActiveOilRigCrateTimers('small');
+        for (const rig of activeSmall) {
+            const time = Timer.getTimeLeftOfTimer(rig.unlockTimer);
             if (time) {
                 if (isInfoChannel) {
                     return Client.client.intlGet(this.guildId, 'timeUntilUnlocksAt', {
-                        time: Timer.getTimeLeftOfTimer(this.mapMarkers.crateSmallOilRigTimer, 's'),
-                        location: this.mapMarkers.crateSmallOilRigLocation
+                        time: Timer.getTimeLeftOfTimer(rig.unlockTimer, 's'),
+                        location: rig.location
                     });
                 }
                 else {
                     strings.push(Client.client.intlGet(this.guildId, 'timeBeforeCrateAtSmallOilRigUnlocks', {
                         time: time,
-                        location: this.mapMarkers.crateSmallOilRigLocation
+                        location: rig.location
                     }));
                 }
             }
