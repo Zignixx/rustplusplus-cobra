@@ -1467,21 +1467,16 @@ class RustPlus extends RustPlusLib {
             else if (rig.triggeredAt !== null) {
                 /* Heavy Scientists were called here before, show time since. */
                 const secondsSince = (new Date() - rig.triggeredAt) / 1000;
-                if (isInfoChannel) {
-                    strings.push(Client.client.intlGet(this.guildId, 'timeUntilUnlocksAt', {
-                        time: Timer.secondsToFullScale(secondsSince, 's'),
-                        location: rig.location
-                    }));
-                }
-                else {
-                    strings.push(Client.client.intlGet(this.guildId, 'timeSinceHeavyScientistsOnLarge', {
-                        time: Timer.secondsToFullScale(secondsSince)
-                    }) + ` (${rig.location})`);
-                }
+                strings.push(Client.client.intlGet(this.guildId, 'timeSinceHeavyScientistsOnLargeLocation', {
+                    time: Timer.secondsToFullScale(secondsSince),
+                    location: rig.location
+                }));
             }
             else {
                 /* No data yet for this rig. */
-                strings.push(Client.client.intlGet(this.guildId, 'noDataOnLargeOilRig') + ` (${rig.location})`);
+                strings.push(Client.client.intlGet(this.guildId, 'noDataOnLargeOilRigLocation', {
+                    location: rig.location
+                }));
             }
         }
 
@@ -2348,21 +2343,16 @@ class RustPlus extends RustPlusLib {
             else if (rig.triggeredAt !== null) {
                 /* Heavy Scientists were called here before, show time since. */
                 const secondsSince = (new Date() - rig.triggeredAt) / 1000;
-                if (isInfoChannel) {
-                    strings.push(Client.client.intlGet(this.guildId, 'timeUntilUnlocksAt', {
-                        time: Timer.secondsToFullScale(secondsSince, 's'),
-                        location: rig.location
-                    }));
-                }
-                else {
-                    strings.push(Client.client.intlGet(this.guildId, 'timeSinceHeavyScientistsOnSmall', {
-                        time: Timer.secondsToFullScale(secondsSince)
-                    }) + ` (${rig.location})`);
-                }
+                strings.push(Client.client.intlGet(this.guildId, 'timeSinceHeavyScientistsOnSmallLocation', {
+                    time: Timer.secondsToFullScale(secondsSince),
+                    location: rig.location
+                }));
             }
             else {
                 /* No data yet for this rig. */
-                strings.push(Client.client.intlGet(this.guildId, 'noDataOnSmallOilRig') + ` (${rig.location})`);
+                strings.push(Client.client.intlGet(this.guildId, 'noDataOnSmallOilRigLocation', {
+                    location: rig.location
+                }));
             }
         }
 
