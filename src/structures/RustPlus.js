@@ -1443,10 +1443,10 @@ class RustPlus extends RustPlusLib {
             const time = Timer.getTimeLeftOfTimer(rig.unlockTimer);
             if (time) {
                 if (isInfoChannel) {
-                    return Client.client.intlGet(this.guildId, 'timeUntilUnlocksAt', {
+                    strings.push(Client.client.intlGet(this.guildId, 'timeUntilUnlocksAt', {
                         time: Timer.getTimeLeftOfTimer(rig.unlockTimer, 's'),
                         location: rig.location
-                    });
+                    }));
                 }
                 else {
                     strings.push(Client.client.intlGet(this.guildId, 'timeBeforeCrateAtLargeOilRigUnlocks', {
@@ -1475,6 +1475,11 @@ class RustPlus extends RustPlusLib {
                     });
                 }
             }
+        }
+
+        /* The info channel expects a single string; join the per-rig lines. */
+        if (isInfoChannel) {
+            return strings.join('\n');
         }
 
         return strings;
@@ -2311,10 +2316,10 @@ class RustPlus extends RustPlusLib {
             const time = Timer.getTimeLeftOfTimer(rig.unlockTimer);
             if (time) {
                 if (isInfoChannel) {
-                    return Client.client.intlGet(this.guildId, 'timeUntilUnlocksAt', {
+                    strings.push(Client.client.intlGet(this.guildId, 'timeUntilUnlocksAt', {
                         time: Timer.getTimeLeftOfTimer(rig.unlockTimer, 's'),
                         location: rig.location
-                    });
+                    }));
                 }
                 else {
                     strings.push(Client.client.intlGet(this.guildId, 'timeBeforeCrateAtSmallOilRigUnlocks', {
@@ -2343,6 +2348,11 @@ class RustPlus extends RustPlusLib {
                     });
                 }
             }
+        }
+
+        /* The info channel expects a single string; join the per-rig lines. */
+        if (isInfoChannel) {
+            return strings.join('\n');
         }
 
         return strings;

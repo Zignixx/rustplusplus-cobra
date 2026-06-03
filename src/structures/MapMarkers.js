@@ -54,6 +54,11 @@ class MapMarkers {
         this.cargoShipEgressTimers = new Object();
         this.oilRigCrateTimers = new Object();
 
+        /* Tracks whether a Locked Crate is currently present at each Oil Rig, keyed by
+           the Oil Rig grid location (e.g. "D8"). Used to detect when a crate respawns
+           (state goes from "no crate" to "crate present"). */
+        this.oilRigCratePresence = new Object();
+
         /* Event dates */
         this.timeSinceCargoShipWasOut = null;
         this.timeSinceCH47WasOut = null;
@@ -597,49 +602,49 @@ class MapMarkers {
         let newMarkers = this.getNewMarkersOfTypeId(this.types.Crate, mapMarkers.markers);
         let leftMarkers = this.getLeftMarkersOfTypeId(this.types.Crate, mapMarkers.markers);
         let remainingMarkers = this.getRemainingMarkersOfTypeId(this.types.Crate, mapMarkers.markers);
+        let mapSize = this.rustplus.info.correctedMapSize;
 
-        /* Crate markers that are new. */
+        /* Keep the internal crate list in sync with the current markers. */
         for (let marker of newMarkers) {
-            let mapSize = this.rustplus.info.correctedMapSize;
-            let pos = Map.getPos(marker.x, marker.y, mapSize, this.rustplus);
-
-            marker.location = pos;
-
-            /* Determine if the Crate spawned at an Oil Rig. The Locked Crate
-               only respawns at an Oil Rig once the previous one has been looted. */
+            marker.location = Map.getPos(marker.x, marker.y, mapSize, this.rustplus);
             let oilRig = this.getClosestOilRig(marker.x, marker.y);
             marker.crateType = oilRig !== null ? 'oilRig' : 'other';
+            this.crates.push(marker);
+        }
 
-            if (marker.crateType === 'oilRig' && !this.rustplus.isFirstPoll) {
-                let oilRigLocation = Map.getPos(oilRig.x, oilRig.y, mapSize, this.rustplus);
+        for (let marker of leftMarkers) {
+            this.crates = this.crates.filter(e => e.id !== marker.id);
+        }
 
+        for (let marker of remainingMarkers) {
+            let crate = this.getMarkerByTypeId(this.types.Crate, marker.id);
+            crate.x = marker.x;
+            crate.y = marker.y;
+            crate.location = Map.getPos(marker.x, marker.y, mapSize, this.rustplus);
+        }
+
+        /* Detect Locked Crate respawns per Oil Rig. For each Oil Rig we track whether a
+           crate is currently present. When the state changes from "no crate" to
+           "crate present", the Locked Crate has respawned at that Oil Rig. */
+        for (const oilRig of this.getAllOilRigs()) {
+            const cratePresent = this.crates.some(crate =>
+                Map.getDistance(crate.x, crate.y, oilRig.x, oilRig.y) <=
+                Constants.OIL_RIG_LOCKED_CRATE_MAX_DISTANCE);
+
+            const wasPresent = this.oilRigCratePresence[oilRig.location] === true;
+
+            if (cratePresent && !wasPresent && !this.rustplus.isFirstPoll) {
                 this.rustplus.sendEvent(
                     this.rustplus.notificationSettings.lockedCrateOilRigRespawnedSetting,
                     this.client.intlGet(this.rustplus.guildId, 'lockedCrateOilRigRespawned',
-                        { location: oilRigLocation.location }),
+                        { location: oilRig.location }),
                     null,
                     Constants.COLOR_LOCKED_CRATE_OILRIG_RESPAWNED,
                     this.rustplus.isFirstPoll,
                     'locked_crate_logo.png');
             }
 
-            this.crates.push(marker);
-        }
-
-        /* Crate markers that have left. */
-        for (let marker of leftMarkers) {
-            this.crates = this.crates.filter(e => e.id !== marker.id);
-        }
-
-        /* Crate markers that still remains. */
-        for (let marker of remainingMarkers) {
-            let mapSize = this.rustplus.info.correctedMapSize;
-            let pos = Map.getPos(marker.x, marker.y, mapSize, this.rustplus);
-            let crate = this.getMarkerByTypeId(this.types.Crate, marker.id);
-
-            crate.x = marker.x;
-            crate.y = marker.y;
-            crate.location = pos;
+            this.oilRigCratePresence[oilRig.location] = cratePresent;
         }
     }
 
@@ -980,6 +985,24 @@ class MapMarkers {
         return closestOilRig;
     }
 
+    getAllOilRigs() {
+        /* Returns an array of all Oil Rig monuments with their size and grid location. */
+        const mapSize = this.rustplus.info.correctedMapSize;
+        const oilRigs = [];
+        for (let monument of this.rustplus.map.monuments) {
+            if (monument.token !== 'oil_rig_small' && monument.token !== 'large_oil_rig') continue;
+
+            const pos = Map.getPos(monument.x, monument.y, mapSize, this.rustplus);
+            oilRigs.push({
+                size: monument.token === 'oil_rig_small' ? 'small' : 'large',
+                x: monument.x,
+                y: monument.y,
+                location: pos.location
+            });
+        }
+        return oilRigs;
+    }
+
     reset() {
         this.players = [];
         this.vendingMachines = [];
@@ -999,6 +1022,7 @@ class MapMarkers {
             this.stopOilRigCrateTimers(oilRigLocation);
         }
         this.oilRigCrateTimers = new Object();
+        this.oilRigCratePresence = new Object();
 
         this.timeSinceCargoShipWasOut = null;
         this.timeSinceCH47WasOut = null;
