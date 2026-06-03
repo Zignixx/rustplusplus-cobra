@@ -1438,10 +1438,19 @@ class RustPlus extends RustPlusLib {
 
     getCommandLarge(isInfoChannel = false) {
         const strings = [];
-        const activeLarge = this.mapMarkers.getActiveOilRigCrateTimers('large');
-        for (const rig of activeLarge) {
-            const time = Timer.getTimeLeftOfTimer(rig.unlockTimer);
+        const statuses = this.mapMarkers.getOilRigStatuses('large');
+
+        /* No Large Oil Rig exists on this map. */
+        if (statuses.length === 0) {
+            return isInfoChannel ? Client.client.intlGet(this.guildId, 'noData') :
+                Client.client.intlGet(this.guildId, 'noDataOnLargeOilRig');
+        }
+
+        /* Always report the status of every Large Oil Rig. */
+        for (const rig of statuses) {
+            const time = rig.unlockTimer ? Timer.getTimeLeftOfTimer(rig.unlockTimer) : null;
             if (time) {
+                /* A Locked Crate is currently being hacked, show the remaining time. */
                 if (isInfoChannel) {
                     strings.push(Client.client.intlGet(this.guildId, 'timeUntilUnlocksAt', {
                         time: Timer.getTimeLeftOfTimer(rig.unlockTimer, 's'),
@@ -1455,25 +1464,24 @@ class RustPlus extends RustPlusLib {
                     }));
                 }
             }
-        }
-
-        if (strings.length === 0) {
-            if (this.mapMarkers.timeSinceLargeOilRigWasTriggered === null) {
-                return isInfoChannel ? Client.client.intlGet(this.guildId, 'noData') :
-                    Client.client.intlGet(this.guildId, 'noDataOnLargeOilRig');
-            }
-            else {
-                const secondsSince = (new Date() - this.mapMarkers.timeSinceLargeOilRigWasTriggered) / 1000;
+            else if (rig.triggeredAt !== null) {
+                /* Heavy Scientists were called here before, show time since. */
+                const secondsSince = (new Date() - rig.triggeredAt) / 1000;
                 if (isInfoChannel) {
-                    return Client.client.intlGet(this.guildId, 'timeSinceLastEvent', {
-                        time: Timer.secondsToFullScale(secondsSince, 's')
-                    });
+                    strings.push(Client.client.intlGet(this.guildId, 'timeUntilUnlocksAt', {
+                        time: Timer.secondsToFullScale(secondsSince, 's'),
+                        location: rig.location
+                    }));
                 }
                 else {
-                    return Client.client.intlGet(this.guildId, 'timeSinceHeavyScientistsOnLarge', {
+                    strings.push(Client.client.intlGet(this.guildId, 'timeSinceHeavyScientistsOnLarge', {
                         time: Timer.secondsToFullScale(secondsSince)
-                    });
+                    }) + ` (${rig.location})`);
                 }
+            }
+            else {
+                /* No data yet for this rig. */
+                strings.push(Client.client.intlGet(this.guildId, 'noDataOnLargeOilRig') + ` (${rig.location})`);
             }
         }
 
@@ -2311,10 +2319,19 @@ class RustPlus extends RustPlusLib {
 
     getCommandSmall(isInfoChannel = false) {
         const strings = [];
-        const activeSmall = this.mapMarkers.getActiveOilRigCrateTimers('small');
-        for (const rig of activeSmall) {
-            const time = Timer.getTimeLeftOfTimer(rig.unlockTimer);
+        const statuses = this.mapMarkers.getOilRigStatuses('small');
+
+        /* No Small Oil Rig exists on this map. */
+        if (statuses.length === 0) {
+            return isInfoChannel ? Client.client.intlGet(this.guildId, 'noData') :
+                Client.client.intlGet(this.guildId, 'noDataOnSmallOilRig');
+        }
+
+        /* Always report the status of every Small Oil Rig. */
+        for (const rig of statuses) {
+            const time = rig.unlockTimer ? Timer.getTimeLeftOfTimer(rig.unlockTimer) : null;
             if (time) {
+                /* A Locked Crate is currently being hacked, show the remaining time. */
                 if (isInfoChannel) {
                     strings.push(Client.client.intlGet(this.guildId, 'timeUntilUnlocksAt', {
                         time: Timer.getTimeLeftOfTimer(rig.unlockTimer, 's'),
@@ -2328,25 +2345,24 @@ class RustPlus extends RustPlusLib {
                     }));
                 }
             }
-        }
-
-        if (strings.length === 0) {
-            if (this.mapMarkers.timeSinceSmallOilRigWasTriggered === null) {
-                return isInfoChannel ? Client.client.intlGet(this.guildId, 'noData') :
-                    Client.client.intlGet(this.guildId, 'noDataOnSmallOilRig');
-            }
-            else {
-                const secondsSince = (new Date() - this.mapMarkers.timeSinceSmallOilRigWasTriggered) / 1000;
+            else if (rig.triggeredAt !== null) {
+                /* Heavy Scientists were called here before, show time since. */
+                const secondsSince = (new Date() - rig.triggeredAt) / 1000;
                 if (isInfoChannel) {
-                    return Client.client.intlGet(this.guildId, 'timeSinceLastEvent', {
-                        time: Timer.secondsToFullScale(secondsSince, 's')
-                    });
+                    strings.push(Client.client.intlGet(this.guildId, 'timeUntilUnlocksAt', {
+                        time: Timer.secondsToFullScale(secondsSince, 's'),
+                        location: rig.location
+                    }));
                 }
                 else {
-                    return Client.client.intlGet(this.guildId, 'timeSinceHeavyScientistsOnSmall', {
+                    strings.push(Client.client.intlGet(this.guildId, 'timeSinceHeavyScientistsOnSmall', {
                         time: Timer.secondsToFullScale(secondsSince)
-                    });
+                    }) + ` (${rig.location})`);
                 }
+            }
+            else {
+                /* No data yet for this rig. */
+                strings.push(Client.client.intlGet(this.guildId, 'noDataOnSmallOilRig') + ` (${rig.location})`);
             }
         }
 

@@ -59,6 +59,11 @@ class MapMarkers {
            (state goes from "no crate" to "crate present"). */
         this.oilRigCratePresence = new Object();
 
+        /* Tracks the last time Heavy Scientists were called (a CH47 dropped them off) at
+           each Oil Rig, keyed by the Oil Rig grid location (e.g. "D8"). Used by the
+           !small / !large commands to report the status of every Oil Rig individually. */
+        this.timeSinceOilRigWasTriggered = new Object();
+
         /* Event dates */
         this.timeSinceCargoShipWasOut = null;
         this.timeSinceCH47WasOut = null;
@@ -398,6 +403,7 @@ class MapMarkers {
                         this.startOilRigCrateTimers('small', oilRigLocation.location, smallUnlockTimeMs);
 
                         this.timeSinceSmallOilRigWasTriggered = new Date();
+                        this.timeSinceOilRigWasTriggered[oilRigLocation.location] = new Date();
                         break;
                     }
                 }
@@ -427,6 +433,7 @@ class MapMarkers {
                         this.startOilRigCrateTimers('large', oilRigLocation.location, largeUnlockTimeMs);
 
                         this.timeSinceLargeOilRigWasTriggered = new Date();
+                        this.timeSinceOilRigWasTriggered[oilRigLocation.location] = new Date();
                         break;
                     }
                 }
@@ -910,6 +917,30 @@ class MapMarkers {
         return active;
     }
 
+    getOilRigStatuses(size) {
+        /* Returns the status of every Oil Rig of the given size ('small' or 'large').
+           Each entry: { location, unlockTimer, cratePresent, triggeredAt }.
+           - unlockTimer: the running unlock timer (or null if none is active).
+           - cratePresent: whether a Locked Crate is currently present at the rig.
+           - triggeredAt: the last time Heavy Scientists were called at the rig (or null). */
+        const statuses = [];
+        for (const oilRig of this.getAllOilRigs()) {
+            if (oilRig.size !== size) continue;
+
+            const timerEntry = this.oilRigCrateTimers[oilRig.location];
+            const unlockTimer = (timerEntry && timerEntry.size === size && timerEntry.unlockTimer)
+                ? timerEntry.unlockTimer : null;
+
+            statuses.push({
+                location: oilRig.location,
+                unlockTimer: unlockTimer,
+                cratePresent: this.oilRigCratePresence[oilRig.location] === true,
+                triggeredAt: this.timeSinceOilRigWasTriggered[oilRig.location] || null
+            });
+        }
+        return statuses;
+    }
+
     notifyCrateOilRigOpen(args) {
         let size = args[0];
         let oilRigLocation = args[1];
@@ -1023,6 +1054,7 @@ class MapMarkers {
         }
         this.oilRigCrateTimers = new Object();
         this.oilRigCratePresence = new Object();
+        this.timeSinceOilRigWasTriggered = new Object();
 
         this.timeSinceCargoShipWasOut = null;
         this.timeSinceCH47WasOut = null;
