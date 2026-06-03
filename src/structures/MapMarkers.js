@@ -18,9 +18,16 @@
 
 */
 
+const Fs = require('fs');
+const Path = require('path');
+
 const Constants = require('../util/constants.js');
 const Map = require('../util/map.js');
 const Timer = require('../util/timer');
+
+/* Debug: path to the separate marker debug log file (in the project root /logs folder,
+   which is also mounted as a Docker volume). */
+const MARKERS_DEBUG_LOG_PATH = Path.join(__dirname, '..', '..', 'logs', 'markers-debug.log');
 
 class MapMarkers {
     constructor(mapMarkers, rustplus, client) {
@@ -271,6 +278,11 @@ class MapMarkers {
     /* Update event map markers */
 
     updateMapMarkers(mapMarkers) {
+        /* Debug: log every newly discovered marker (with all properties) to a separate
+           log file. This runs BEFORE the update functions so the markers are still
+           "new" (not yet present in the internal lists). */
+        this.logNewMarkersDebug(mapMarkers);
+
         this.updatePlayers(mapMarkers);
         this.updateCargoShips(mapMarkers);
         this.updatePatrolHelicopters(mapMarkers);
@@ -279,6 +291,99 @@ class MapMarkers {
         this.updateVendingMachines(mapMarkers);
         this.updateGenericRadiuses(mapMarkers);
         this.updateTravelingVendors(mapMarkers);
+    }
+
+    logNewMarkersDebug(mapMarkers) {
+        /* DEBUG ONLY: Writes every newly discovered map marker (all properties) to
+           logs/markers-debug.log. Useful for inspecting exactly what a Crate marker
+           looks like when a Locked Crate respawns at an Oil Rig. Remove when no longer
+           needed. */
+        try {
+            const typeNames = {
+                [this.types.Player]: 'Player',
+                [this.types.Explosion]: 'Explosion',
+                [this.types.VendingMachine]: 'VendingMachine',
+                [this.types.CH47]: 'CH47',
+                [this.types.CargoShip]: 'CargoShip',
+                [this.types.Crate]: 'Crate',
+                [this.types.GenericRadius]: 'GenericRadius',
+                [this.types.PatrolHelicopter]: 'PatrolHelicopter',
+                [this.types.TravelingVendor]: 'TravelingVendor'
+            };
+
+            const mapSize = this.rustplus.info ? this.rustplus.info.correctedMapSize : null;
+
+            /* Collect new markers for every known type (id based). */
+            const newMarkers = [];
+            for (const type of Object.values(this.types)) {
+                for (const marker of this.getNewMarkersOfTypeId(type, mapMarkers.markers)) {
+                    newMarkers.push(marker);
+                }
+            }
+
+            if (newMarkers.length === 0) return;
+
+            const timestamp = new Date().toISOString();
+            const lines = [];
+
+            for (const marker of newMarkers) {
+                const typeName = typeNames[marker.type] || `Unknown(${marker.type})`;
+
+                /* Compute the grid location/position for context. */
+                let grid = null;
+                let closestOilRig = null;
+                try {
+                    if (mapSize !== null) {
+                        const pos = Map.getPos(marker.x, marker.y, mapSize, this.rustplus);
+                        grid = { location: pos.location, string: pos.string };
+                    }
+
+                    const oilRig = this.getClosestOilRig(marker.x, marker.y);
+                    if (oilRig !== null) {
+                        closestOilRig = {
+                            token: oilRig.token,
+                            x: oilRig.x,
+                            y: oilRig.y,
+                            distance: Map.getDistance(marker.x, marker.y, oilRig.x, oilRig.y),
+                            location: mapSize !== null
+                                ? Map.getPos(oilRig.x, oilRig.y, mapSize, this.rustplus).location : null
+                        };
+                    }
+                }
+                catch (e) {
+                    /* Ignore positioning errors in debug logging. */
+                }
+
+                const entry = {
+                    timestamp: timestamp,
+                    guildId: this.rustplus.guildId,
+                    serverId: this.rustplus.serverId,
+                    isFirstPoll: this.rustplus.isFirstPoll,
+                    typeName: typeName,
+                    grid: grid,
+                    closestOilRig: closestOilRig,
+                    /* All raw properties of the marker. */
+                    marker: marker
+                };
+
+                lines.push(JSON.stringify(entry, this.jsonReplacerDebug, 2));
+            }
+
+            Fs.appendFileSync(MARKERS_DEBUG_LOG_PATH, lines.join('\n') + '\n');
+        }
+        catch (e) {
+            /* Never let debug logging break the bot. */
+            try {
+                this.rustplus.log('DEBUG', `Failed to write markers debug log: ${e.message}`, 'error');
+            }
+            catch (e2) { /* ignore */ }
+        }
+    }
+
+    jsonReplacerDebug(key, value) {
+        /* Avoid huge/circular structures when stringifying markers. */
+        if (typeof value === 'bigint') return value.toString();
+        return value;
     }
 
     updatePlayers(mapMarkers) {
