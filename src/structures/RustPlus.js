@@ -24,6 +24,7 @@ const RustPlusLib = require('@liamcottle/rustplus.js');
 const Translate = require('translate');
 
 const Client = require('../../index.ts');
+const Config = require('../../config');
 const Constants = require('../util/constants.js');
 const Decay = require('../util/decay.js');
 const DiscordEmbeds = require('../discordTools/discordEmbeds');
@@ -1972,6 +1973,10 @@ class RustPlus extends RustPlusLib {
     }
 
     getCommandPlayer(command) {
+        if (Config.battlemetrics.token === '') {
+            return null;
+        }
+
         const instance = Client.client.getInstance(this.guildId);
         const battlemetricsId = instance.serverList[this.serverId].battlemetricsId;
         const prefix = this.generalSettings.prefix;

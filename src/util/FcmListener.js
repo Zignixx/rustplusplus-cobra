@@ -31,6 +31,7 @@ const DiscordTools = require('../discordTools/discordTools.js');
 const InstanceUtils = require('../util/instanceUtils.js');
 const Map = require('../util/map.js');
 const Scrape = require('../util/scrape.js');
+const Config = require('../../config');
 
 module.exports = async (client, guild) => {
     const credentials = InstanceUtils.readCredentialsFile(guild.id);
@@ -224,13 +225,17 @@ async function pairingServer(client, guild, title, message, body) {
     let messageObj = undefined;
     if (server) messageObj = await DiscordTools.getMessageById(guild.id, instance.channelId.servers, server.messageId);
 
-    let battlemetricsId = null;
-    const bmInstance = new Battlemetrics(null, title);
-    await bmInstance.setup();
-    if (bmInstance.lastUpdateSuccessful) {
-        battlemetricsId = bmInstance.id;
-        if (!client.battlemetricsInstances.hasOwnProperty(bmInstance.id)) {
-            client.battlemetricsInstances[bmInstance.id] = bmInstance;
+    let battlemetricsId = server?.battlemetricsId ?? null;
+    let connect = server?.connect ?? null;
+    if (Config.battlemetrics.token !== '') {
+        const bmInstance = new Battlemetrics(null, title);
+        await bmInstance.setup();
+        if (bmInstance.lastUpdateSuccessful) {
+            battlemetricsId = bmInstance.id;
+            connect = `connect ${bmInstance.server_ip}:${bmInstance.server_port}`;
+            if (!client.battlemetricsInstances.hasOwnProperty(bmInstance.id)) {
+                client.battlemetricsInstances[bmInstance.id] = bmInstance;
+            }
         }
     }
 
@@ -251,8 +256,7 @@ async function pairingServer(client, guild, title, message, body) {
         switchGroups: server ? server.switchGroups : {},
         messageId: (messageObj !== undefined) ? messageObj.id : null,
         battlemetricsId: battlemetricsId,
-        connect: (!bmInstance.lastUpdateSuccessful) ? null :
-            `connect ${bmInstance.server_ip}:${bmInstance.server_port}`,
+        connect: connect,
         cargoShipEgressTimeMs: server ? server.cargoShipEgressTimeMs : Constants.DEFAULT_CARGO_SHIP_EGRESS_TIME_MS,
         oilRigLockedCrateUnlockTimeMs: server ? server.oilRigLockedCrateUnlockTimeMs :
             Constants.DEFAULT_OIL_RIG_LOCKED_CRATE_UNLOCK_TIME_MS,
