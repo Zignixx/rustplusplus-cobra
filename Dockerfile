@@ -14,4 +14,7 @@ VOLUME [ "/app/instances" ]
 VOLUME [ "/app/logs" ]
 VOLUME [ "/app/maps" ]
 
+# HTTP API (enabled by RPP_API_TOKEN)
+EXPOSE 24343
+
 CMD ["npm", "start"]

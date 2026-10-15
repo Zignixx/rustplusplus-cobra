@@ -18,6 +18,7 @@
 
 */
 
+const ApiEvents = require('../api/apiEvents.js');
 const Constants = require('../util/constants.js');
 const DiscordMessages = require('../discordTools/discordMessages.js');
 
@@ -46,6 +47,7 @@ module.exports = {
             if (instance.generalSettings.connectionNotify) await rustplus.sendInGameMessage(str);
             rustplus.log(client.intlGet(null, 'infoCap'), str);
             rustplus.updateConnections(steamId, str);
+            ApiEvents.publish(guildId, 'connection', { kind: 'left', steamId: steamId, name: player.name, text: str });
         }
 
         for (const steamId of newPlayers) {
@@ -57,6 +59,9 @@ module.exports = {
                     if (instance.generalSettings.connectionNotify) await rustplus.sendInGameMessage(str);
                     rustplus.log(client.intlGet(null, 'infoCap'), str);
                     rustplus.updateConnections(steamId, str);
+                    ApiEvents.publish(guildId, 'connection', {
+                        kind: 'joined', steamId: steamId, name: player.name, text: str
+                    });
                 }
             }
         }
@@ -78,6 +83,9 @@ module.exports = {
                         rustplus.updateDeaths(player.steamId, {
                             name: player.name,
                             location: player.pos
+                        });
+                        ApiEvents.publish(guildId, 'death', {
+                            steamId: player.steamId, name: player.name, location: location, text: str
                         });
                     }
 
@@ -112,6 +120,10 @@ module.exports = {
                                 server: server.title
                             }));
                         rustplus.updateConnections(player.steamId, str);
+                        ApiEvents.publish(guildId, 'connection', {
+                            kind: 'online',
+                            steamId: player.steamId, name: player.name, text: str
+                        });
                     }
 
                     if (player.isGoneOffline(playerUpdated)) {
@@ -125,6 +137,10 @@ module.exports = {
                                 server: server.title
                             }));
                         rustplus.updateConnections(player.steamId, str);
+                        ApiEvents.publish(guildId, 'connection', {
+                            kind: 'offline',
+                            steamId: player.steamId, name: player.name, text: str
+                        });
                     }
                     break;
                 }

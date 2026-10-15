@@ -18,6 +18,7 @@
 
 */
 
+const ApiEvents = require('../api/apiEvents.js');
 const CommandHandler = require('../handlers/inGameCommandHandler.js');
 const Constants = require('../util/constants.js');
 const DiscordMessages = require('../discordTools/discordMessages.js');
@@ -114,6 +115,12 @@ async function messageBroadcastTeamMessage(rustplus, client, message) {
     const isCommand = await CommandHandler.inGameCommandHandler(rustplus, client, message);
     if (isCommand) return;
 
+    ApiEvents.publish(rustplus.guildId, 'chat', {
+        steamId: steamId,
+        name: message.broadcast.teamMessage.message.name,
+        text: message.broadcast.teamMessage.message.message
+    });
+
     rustplus.log(client.intlGet(null, 'infoCap'), client.intlGet(null, `logInGameMessage`, {
         message: message.broadcast.teamMessage.message.message,
         user: `${message.broadcast.teamMessage.message.name} (${steamId})`
@@ -185,6 +192,11 @@ async function messageBroadcastEntityChangedSmartAlarm(rustplus, client, message
         server.alarms[entityId].lastTrigger = Math.floor(new Date() / 1000);
         client.setInstance(rustplus.guildId, instance);
         await DiscordMessages.sendSmartAlarmTriggerMessage(rustplus.guildId, serverId, entityId);
+        ApiEvents.publish(rustplus.guildId, 'alarm', {
+            entityId: `${entityId}`,
+            name: server.alarms[entityId].name,
+            text: server.alarms[entityId].message
+        });
 
         if (instance.generalSettings.smartAlarmNotifyInGame) {
             rustplus.sendInGameMessage(`${server.alarms[entityId].name}: ${server.alarms[entityId].message}`);

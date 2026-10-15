@@ -15,3 +15,11 @@ The config file should look something like this (NOTE: key below is invalid):
     }
 
 If no token is obtained, tracker functionality will be disabled.
+## Troubleshooting
+
+If the log shows `Battlemetrics API Request Failed`, the reason follows the request URL:
+
+* `401 … (check RPP_BATTLEMETRICS_TOKEN)`: the token is invalid or expired. Set it without quotes and without a `Bearer ` prefix.
+* `403 Access denied. A subscription is required to use the API.`: Battlemetrics only serves its API to accounts with a subscription. Without one, Battlemetrics and trackers can't work.
+
+The same failure is logged at most every 30 minutes.

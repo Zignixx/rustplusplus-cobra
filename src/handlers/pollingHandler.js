@@ -18,6 +18,7 @@
 
 */
 
+const ApiEvents = require('../api/apiEvents.js');
 const Info = require('../structures/Info');
 const InformationHandler = require('../handlers/informationHandler.js');
 const MapMarkers = require('../structures/MapMarkers.js');
@@ -51,6 +52,7 @@ module.exports = {
 
         await module.exports.handlers(rustplus, client, info, mapMarkers, teamInfo, time);
         rustplus.isFirstPoll = false;
+        ApiEvents.pollFinished(rustplus.guildId);
     },
 
     handlers: async function (rustplus, client, info, mapMarkers, teamInfo, time) {

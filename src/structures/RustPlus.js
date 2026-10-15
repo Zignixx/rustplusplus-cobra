@@ -23,6 +23,7 @@ const Path = require('path');
 const RustPlusLib = require('@liamcottle/rustplus.js');
 const Translate = require('translate');
 
+const ApiEvents = require('../api/apiEvents.js');
 const Client = require('../../index.ts');
 const Config = require('../../config');
 const Constants = require('../util/constants.js');
@@ -289,6 +290,13 @@ class RustPlus extends RustPlusLib {
         }
         if (!firstPoll && setting.voice) {
             await DiscordVoice.sendDiscordVoiceMessage(this.guildId, text);
+        }
+        if (!firstPoll) {
+            const settingKey = Object.keys(this.notificationSettings || {}).find(key =>
+                this.notificationSettings[key] === setting) || null;
+            ApiEvents.publish(this.guildId, 'event', {
+                category: event, setting: settingKey, text: text, color: embed_color, image: img
+            });
         }
         this.log(Client.client.intlGet(null, 'eventCap'), text);
     }

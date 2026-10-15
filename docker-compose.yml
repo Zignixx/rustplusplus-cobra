@@ -6,8 +6,14 @@ services:
             - ./instances:/app/instances
             - ./logs:/app/logs
             - ./maps:/app/maps
+        ports:
+            - "24343:24343"
         environment:
             - RPP_DISCORD_CLIENT_ID=111....1111
             - RPP_DISCORD_TOKEN=token
+            # Optional: Battlemetrics token (no quotes), needed for Battlemetrics and trackers
+            - RPP_BATTLEMETRICS_TOKEN=
+            # Optional: token for the read-only HTTP API on port 24343 (at least 16 characters)
+            - RPP_API_TOKEN=
         container_name: rpp
-        image: ghcr.io/alexemanuelol/rustplusplus
+        image: ghcr.io/zignixx/rustplusplus-cobra:latest

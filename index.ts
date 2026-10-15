@@ -40,6 +40,8 @@ const client = new DiscordBot({
 
 client.build();
 
+require('./src/api/ApiServer').start(client);
+
 function createMissingDirectories() {
     if (!Fs.existsSync(Path.join(__dirname, 'logs'))) {
         Fs.mkdirSync(Path.join(__dirname, 'logs'));

@@ -22,6 +22,7 @@ const Discord = require('discord.js');
 const Path = require('path');
 const PushReceiverClient = require('@liamcottle/push-receiver/src/client');
 
+const ApiEvents = require('../api/apiEvents.js');
 const Battlemetrics = require('../structures/Battlemetrics');
 const Constants = require('../util/constants.js');
 const DiscordButtons = require('../discordTools/discordButtons.js');
@@ -493,6 +494,7 @@ async function alarmRaidAlarm(client, guild, title, message, body) {
     if (rustplus && (serverId === rustplus.serverId)) {
         await DiscordMessages.sendMessage(guild.id, content, null, instance.channelId.activity);
         rustplus.sendInGameMessage(`${title}: ${message}`);
+        ApiEvents.publish(guild.id, 'alarm', { name: title, text: message, raidAlarm: true });
     }
 
     client.log(client.intlGet(null, 'infoCap'), `${title} ${message}`);
