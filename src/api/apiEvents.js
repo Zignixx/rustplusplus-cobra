@@ -29,7 +29,8 @@ class ApiEvents extends EventEmitter {
         super();
         this.setMaxListeners(0);
         this.recent = new Object();
-        this.nextId = 1;
+        /* Start at the boot time, so ids stay unique across bot restarts for clients that keep a feed. */
+        this.nextId = Date.now();
     }
 
     /**
