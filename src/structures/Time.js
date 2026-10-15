@@ -18,6 +18,7 @@
 
 */
 
+const Constants = require('../util/constants.js');
 const TimeLib = require('../util/timer.js');
 
 class Time {
@@ -35,6 +36,7 @@ class Time {
         this._timeTillDay = new Object();
         this._timeTillNight = new Object();
         this._timeTillActive = false;
+        this._lastSecondsTillTransition = null;
 
         this.loadTimeTillConfig();
     }
@@ -102,19 +104,27 @@ class Time {
 
     checkForBroadcast() {
         if (!this.timeTillActive) {
-            return null;
+            this._lastSecondsTillTransition = null;
+            return;
         }
 
-        const timeRemainingString = this.getTimeTillDayOrNight();
-        const timeRemainingSeconds = TimeLib.getSecondsFromStringTime(timeRemainingString);
+        const timeRemainingSeconds = TimeLib.getSecondsFromStringTime(this.getTimeTillDayOrNight());
+        if (timeRemainingSeconds === null) return;
 
-        if (timeRemainingSeconds === 300 || timeRemainingSeconds === 240 || timeRemainingSeconds === 180 || timeRemainingSeconds === 120 || timeRemainingSeconds === 60) { // 5 minutes, 4 minutes, 3 minutes, 2 minutes, 1 minute
-            const locString = this.isDay() ? 'timeTillNightfall' : 'timeTillDaylight';
-            const timeTilltransition = this._client.intlGet(this.guildId, locString, { time: timeRemainingString });
+        const previousSeconds = this._lastSecondsTillTransition;
+        this._lastSecondsTillTransition = timeRemainingSeconds;
+        if (previousSeconds === null || previousSeconds === undefined) return;
 
-            this.rustplus.sendInGameMessage(`${timeTilltransition}`)
-        }
+        /* Announce when a threshold was crossed since the last poll. Comparing for exact equality missed
+           thresholds whenever a poll did not land exactly on them. */
+        const threshold = Constants.TIME_TILL_TRANSITION_BROADCAST_SECONDS.find(t =>
+            previousSeconds > t && timeRemainingSeconds <= t);
+        if (threshold === undefined) return;
 
+        const locString = this.isDay() ? 'timeTillNightfall' : 'timeTillDaylight';
+        this.rustplus.sendInGameMessage(this.client.intlGet(this.rustplus.guildId, locString, {
+            time: TimeLib.secondsToFullScale(threshold)
+        }));
     }
 
     getTimeTillDayOrNight(ignore = '') {

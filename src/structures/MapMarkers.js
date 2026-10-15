@@ -21,6 +21,7 @@
 const Fs = require('fs');
 const Path = require('path');
 
+const Config = require('../../config');
 const Constants = require('../util/constants.js');
 const Map = require('../util/map.js');
 const Timer = require('../util/timer');
@@ -280,8 +281,10 @@ class MapMarkers {
     updateMapMarkers(mapMarkers) {
         /* Debug: log every newly discovered marker (with all properties) to a separate
            log file. This runs BEFORE the update functions so the markers are still
-           "new" (not yet present in the internal lists). */
-        this.logNewMarkersDebug(mapMarkers);
+           "new" (not yet present in the internal lists). Opt-in via RPP_DEBUG_MAP_MARKERS. */
+        if (Config.general.debugMapMarkers) {
+            this.logNewMarkersDebug(mapMarkers);
+        }
 
         this.updatePlayers(mapMarkers);
         this.updateCargoShips(mapMarkers);
@@ -296,8 +299,7 @@ class MapMarkers {
     logNewMarkersDebug(mapMarkers) {
         /* DEBUG ONLY: Writes every newly discovered map marker (all properties) to
            logs/markers-debug.log. Useful for inspecting exactly what a Crate marker
-           looks like when a Locked Crate respawns at an Oil Rig. Remove when no longer
-           needed. */
+           looks like when a Locked Crate respawns at an Oil Rig. */
         try {
             const typeNames = {
                 [this.types.Player]: 'Player',

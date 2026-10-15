@@ -64,6 +64,9 @@ module.exports = {
         1 * 60 * 1000   /* 14 min into the hack -> 1 min remaining */
     ],
 
+    /* In-game announcements before day/night changes (seconds remaining) */
+    TIME_TILL_TRANSITION_BROADCAST_SECONDS: [60, 120, 180, 240, 300],
+
     /* Other constants */
     PATROL_HELI_DOWNED_RADIUS: 400,
     OIL_RIG_CHINOOK_47_MAX_SPAWN_DISTANCE: 550,

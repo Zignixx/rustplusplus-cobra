@@ -30,6 +30,11 @@ const CONNECTION_LOG_SIZE = 1000;
 const PLAYER_CONNECTION_LOG_SIZE = 100;
 const NAME_CHANGE_LOG_SIZE = 100;
 
+/* The same request failure (e.g. invalid token or missing subscription) repeats on every update. Log each distinct
+   failure reason at most once per interval instead of every minute. */
+const FAILURE_LOG_INTERVAL_MS = 30 * 60 * 1000;
+const lastFailureLogTimes = new Object();
+
 class Battlemetrics {
 
     /**
@@ -226,8 +231,37 @@ class Battlemetrics {
             });
         }
         catch (e) {
-            return {};
+            /* Keep the HTTP status and error body so the reason can be logged. */
+            if (e.response) return e.response;
+            return { status: null, data: null, error: e.message };
         }
+    }
+
+    /**
+     *  Log a failed API request with its reason, throttled per reason.
+     *  @param {string} api_call The request api call string.
+     *  @param {object} response The (failed) response from #request.
+     *  @return {bool} true if the failure was logged, false if it was suppressed.
+     */
+    #logRequestFailure(api_call, response) {
+        const status = response.status ?? 'network';
+        const apiError = response.data?.errors?.[0];
+        let reason = `${status}`;
+        if (apiError?.detail) reason += ` ${apiError.detail}`;
+        else if (response.error) reason += ` ${response.error}`;
+
+        if (status === 401) reason += ' (check RPP_BATTLEMETRICS_TOKEN)';
+        else if (status === 403) reason += ' (the Battlemetrics account of the token needs an API subscription)';
+
+        const now = Date.now();
+        const last = lastFailureLogTimes[status];
+        if (last && now - last < FAILURE_LOG_INTERVAL_MS) return false;
+        lastFailureLogTimes[status] = now;
+
+        Client.client.log(Client.client.intlGet(null, 'errorCap'),
+            `${Client.client.intlGet(null, 'battlemetricsApiRequestFailed', { api_call: api_call })} ${reason}`,
+            'error');
+        return true;
     }
 
     /**
@@ -389,11 +423,11 @@ class Battlemetrics {
         const response = await this.#request(api_call);
 
         if (response.status !== 200) {
-            Client.client.log(Client.client.intlGet(null, 'errorCap'),
-                Client.client.intlGet(null, 'battlemetricsApiRequestFailed', { api_call: api_call }), 'error');
+            this.lastFailureLogged = this.#logRequestFailure(api_call, response);
             return null;
         }
 
+        for (const status of Object.keys(lastFailureLogTimes)) delete lastFailureLogTimes[status];
         return response.data;
     }
 
@@ -448,8 +482,7 @@ class Battlemetrics {
         const response = await this.#request(search);
 
         if (response.status !== 200) {
-            Client.client.log(Client.client.intlGet(null, 'errorCap'),
-                Client.client.intlGet(null, 'battlemetricsApiRequestFailed', { api_call: search }), 'error');
+            this.#logRequestFailure(search, response);
             return null;
         }
 
@@ -489,8 +522,10 @@ class Battlemetrics {
 
         if (!data) {
             this.lastUpdateSuccessful = false;
-            Client.client.log(Client.client.intlGet(null, 'errorCap'),
-                Client.client.intlGet(null, 'battlemetricsFailedToUpdate', { server: this.id }), 'error');
+            if (this.lastFailureLogged !== false) {
+                Client.client.log(Client.client.intlGet(null, 'errorCap'),
+                    Client.client.intlGet(null, 'battlemetricsFailedToUpdate', { server: this.id }), 'error');
+            }
             return false;
         }
 

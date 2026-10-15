@@ -18,12 +18,18 @@
 
 */
 
+/* Tolerate tokens pasted with surrounding quotes or a "Bearer " prefix (e.g. RPP_X="abc" in docker-compose). */
+function cleanToken(value) {
+    return (value || '').trim().replace(/^(['"])(.*)\1$/, '$2').replace(/^Bearer\s+/i, '').trim();
+}
+
 module.exports = {
     general: {
         language: process.env.RPP_LANGUAGE || 'en',
         pollingIntervalMs: process.env.RPP_POLLING_INTERVAL || 10000,
         showCallStackError: process.env.RPP_LOG_CALL_STACK || false,
         reconnectIntervalMs: process.env.RPP_RECONNECT_INTERVAL || 15000,
+        debugMapMarkers: process.env.RPP_DEBUG_MAP_MARKERS === 'true', /* Write every new map marker to logs/markers-debug.log */
     },
     discord: {
         username: process.env.RPP_DISCORD_USERNAME || 'rustplusplus',
@@ -32,6 +38,6 @@ module.exports = {
         needAdminPrivileges: process.env.RPP_NEED_ADMIN_PRIVILEGES || true, /* If true, only admins can delete (server, switch..), manage credentials and reset a channel */
     },
     battlemetrics: {
-        token: process.env.RPP_BATTLEMETRICS_TOKEN || ''
+        token: cleanToken(process.env.RPP_BATTLEMETRICS_TOKEN)
     }
 };
