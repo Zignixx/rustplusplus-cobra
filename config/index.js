@@ -41,7 +41,11 @@ module.exports = {
         /* Read-only HTTP API for dashboards, disabled while RPP_API_TOKEN is empty. */
         token: cleanToken(process.env.RPP_API_TOKEN),
         port: parseInt(process.env.RPP_API_PORT) || 24343,
-        host: process.env.RPP_API_HOST || '0.0.0.0'
+        host: process.env.RPP_API_HOST || '0.0.0.0',
+        /* While a dashboard is connected, team and map marker positions are polled this often (2 Rust+ tokens
+           each time). 0 disables it; positions then update with the normal polling interval. */
+        liveIntervalMs: process.env.RPP_API_LIVE_INTERVAL === undefined ? 2000 :
+            (parseInt(process.env.RPP_API_LIVE_INTERVAL) > 0 ? Math.max(parseInt(process.env.RPP_API_LIVE_INTERVAL), 1000) : 0)
     },
     battlemetrics: {
         token: cleanToken(process.env.RPP_BATTLEMETRICS_TOKEN)

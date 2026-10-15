@@ -61,6 +61,9 @@ class ApiServer {
         this.client = client;
         this.server = null;
         this.streams = new Set();
+        /* Positions from the live poll per guild, dropped again when the bot's own poll is newer */
+        this.live = new Object();
+        this.liveRunning = false;
         this.tokenDigest = tokenDigest(Config.api.token);
 
         this.onEvent = this.onEvent.bind(this);
@@ -178,7 +181,7 @@ class ApiServer {
     handleState(res, url) {
         const rustplus = this.getRustplus(url.searchParams.get('guild'));
         if (!rustplus) return this.sendJson(res, 404, { error: 'No Rust server connected' });
-        return this.sendJson(res, 200, Snapshot.build(this.client, rustplus));
+        return this.sendJson(res, 200, Snapshot.build(this.client, rustplus, this.live[rustplus.guildId] || null));
     }
 
     handleEvents(res, url) {
@@ -224,7 +227,10 @@ class ApiServer {
 
         /* Start with a full state, so a client never has to wait for the next poll. */
         const rustplus = this.getRustplus(stream.guildId);
-        if (rustplus) this.writeStream(stream, 'state', Snapshot.build(this.client, rustplus));
+        if (rustplus) {
+            this.writeStream(stream, 'state', Snapshot.build(this.client, rustplus, this.live[rustplus.guildId] || null));
+        }
+        this.startLivePoll();
     }
 
     /* Stream pushes */
@@ -235,7 +241,65 @@ class ApiServer {
         return rustplus ? rustplus.guildId : null;
     }
 
+    /* Live poll: while a dashboard is connected, fetch only map markers and team positions every
+       RPP_API_LIVE_INTERVAL ms (2 tokens), so positions update faster than the bot's 10 s poll. It never
+       overlaps itself and leaves event detection to the bot's own poll. */
+    startLivePoll() {
+        if (this.liveRunning || !Config.api.liveIntervalMs) return;
+        this.liveRunning = true;
+
+        const tick = async () => {
+            if (this.streams.size === 0) {
+                this.liveRunning = false;
+                return;
+            }
+            try {
+                await this.livePoll();
+            }
+            catch (e) {
+                this.client.log('API', `Live poll failed: ${e && e.message ? e.message : e}`, 'error');
+            }
+            setTimeout(tick, Config.api.liveIntervalMs);
+        };
+        setTimeout(tick, Config.api.liveIntervalMs);
+    }
+
+    async livePoll() {
+        const guildIds = new Set();
+        for (const stream of this.streams) {
+            const guildId = this.streamGuildId(stream);
+            if (guildId) guildIds.add(guildId);
+        }
+
+        for (const guildId of guildIds) {
+            const rustplus = this.client.rustplusInstances[guildId];
+            if (!rustplus || !rustplus.isOperational || rustplus.isFirstPoll || !rustplus.mapMarkers) continue;
+
+            const markers = await rustplus.getMapMarkersAsync(5000);
+            const team = await rustplus.getTeamInfoAsync(5000);
+            const markerList = markers && markers.mapMarkers ? markers.mapMarkers.markers : null;
+            const members = team && team.teamInfo ? team.teamInfo.members : null;
+            if (!Array.isArray(markerList) || !Array.isArray(members)) continue;
+
+            const live = { at: Date.now(), players: new Map(), markers: new Map() };
+            for (const m of markerList) {
+                live.markers.set(`${m.id}`, { x: m.x, y: m.y, rotation: m.rotation });
+            }
+            for (const m of members) {
+                live.players.set(m.steamId.toString(), { x: m.x, y: m.y, isOnline: m.isOnline, isAlive: m.isAlive });
+            }
+            this.live[guildId] = live;
+            this.pushState(guildId);
+        }
+    }
+
     onPoll(guildId) {
+        /* The bot's own poll is newer than any live data */
+        delete this.live[guildId];
+        this.pushState(guildId);
+    }
+
+    pushState(guildId) {
         if (this.streams.size === 0) return;
 
         const rustplus = this.client.rustplusInstances[guildId];
@@ -244,7 +308,7 @@ class ApiServer {
         let state = null;
         for (const stream of this.streams) {
             if (this.streamGuildId(stream) !== guildId) continue;
-            if (state === null) state = Snapshot.build(this.client, rustplus);
+            if (state === null) state = Snapshot.build(this.client, rustplus, this.live[guildId] || null);
             this.writeStream(stream, 'state', state);
         }
     }

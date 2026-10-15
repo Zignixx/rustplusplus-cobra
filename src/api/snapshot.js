@@ -135,35 +135,42 @@ function buildMap(client, rustplus) {
     };
 }
 
-function buildTeam(rustplus, project) {
+function buildTeam(rustplus, project, live) {
     const team = rustplus.team;
     if (!team) return null;
 
     return {
         leaderSteamId: team.leaderSteamId,
-        players: team.players.map(player => Object.assign({
-            steamId: player.steamId,
-            name: player.name,
-            isOnline: player.isOnline,
-            isAlive: player.isAlive,
-            isLeader: player.steamId === team.leaderSteamId,
-            isAfk: player.isOnline && typeof player.isAfk === 'function' ? player.isAfk() : false,
-            afkSeconds: player.afkSeconds,
-            spawnTime: toIso(player.spawnTime),
-            deathTime: toIso(player.deathTime),
-            wentOfflineTime: player.wentOfflineTime instanceof Date ? player.wentOfflineTime.toISOString() : null
-        }, position(rustplus, project, player.x, player.y)))
+        players: team.players.map(player => {
+            /* Positions from the faster API live poll, when newer than the bot's poll */
+            const fresh = live ? live.players.get(player.steamId) : null;
+            const p = fresh ? Object.assign({}, { isOnline: player.isOnline, isAlive: player.isAlive }, fresh) : player;
+            return Object.assign({
+                steamId: player.steamId,
+                name: player.name,
+                isOnline: p.isOnline,
+                isAlive: p.isAlive,
+                isLeader: player.steamId === team.leaderSteamId,
+                isAfk: player.isOnline && typeof player.isAfk === 'function' ? player.isAfk() : false,
+                afkSeconds: player.afkSeconds,
+                spawnTime: toIso(player.spawnTime),
+                deathTime: toIso(player.deathTime),
+                wentOfflineTime: player.wentOfflineTime instanceof Date ? player.wentOfflineTime.toISOString() : null
+            }, position(rustplus, project, p.x, p.y));
+        })
     };
 }
 
-function buildMarkers(rustplus, project) {
+function buildMarkers(rustplus, project, live) {
     const mm = rustplus.mapMarkers;
     if (!mm) return null;
 
-    const base = marker => Object.assign({
-        id: typeof marker.id === 'object' && marker.id !== null ? marker.id.toString() : marker.id,
-        rotation: marker.rotation
-    }, position(rustplus, project, marker.x, marker.y));
+    const base = marker => {
+        const id = typeof marker.id === 'object' && marker.id !== null ? marker.id.toString() : marker.id;
+        const fresh = live ? live.markers.get(`${id}`) : null;
+        const m = fresh || marker;
+        return Object.assign({ id: id, rotation: m.rotation }, position(rustplus, project, m.x, m.y));
+    };
 
     return {
         cargoShips: mm.cargoShips.map(marker => Object.assign(base(marker), {
@@ -275,7 +282,11 @@ function buildTimers(rustplus) {
 }
 
 module.exports = {
-    build: function (client, rustplus) {
+    /**
+     *  @param {object|null} live Positions from the API live poll ({ players: Map, markers: Map }), newer than
+     *      the bot's last poll, or null.
+     */
+    build: function (client, rustplus, live = null) {
         const instance = client.getInstance(rustplus.guildId);
         const server = instance && instance.serverList ? instance.serverList[rustplus.serverId] : null;
         const project = createProjector(rustplus);
@@ -288,8 +299,8 @@ module.exports = {
             server: buildServer(client, rustplus, server),
             time: buildTime(rustplus),
             map: buildMap(client, rustplus),
-            team: buildTeam(rustplus, project),
-            markers: buildMarkers(rustplus, project),
+            team: buildTeam(rustplus, project, live),
+            markers: buildMarkers(rustplus, project, live),
             oilRigs: buildOilRigs(client, rustplus, project, server),
             lastEvents: buildEventTimes(rustplus),
             devices: buildDevices(rustplus, server),

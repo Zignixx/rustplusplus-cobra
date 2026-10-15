@@ -15,5 +15,7 @@ services:
             - RPP_BATTLEMETRICS_TOKEN=
             # Optional: token for the read-only HTTP API on port 24343 (at least 16 characters)
             - RPP_API_TOKEN=
+            # Optional: how often positions are refreshed for connected dashboards (ms, default 2000)
+            # - RPP_API_LIVE_INTERVAL=2000
         container_name: rpp
         image: ghcr.io/zignixx/rustplusplus-cobra:latest
