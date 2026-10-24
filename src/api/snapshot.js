@@ -20,7 +20,6 @@
 
 const Map = require('../util/map.js');
 const Trackers = require('./trackers.js');
-const TimeLib = require('../util/timer.js');
 
 /* Builds the JSON state that the HTTP API serves for one rustplus instance. Every section is built defensively:
    while the bot is (re)connecting, map/info/team/markers can still be null. All positions are given in world
@@ -89,14 +88,36 @@ function buildServer(client, rustplus, server) {
     };
 }
 
+/* Seconds till the next nightfall and daybreak, from the durations Rust++ learned over a full in-game day
+   (timeTillNight: day time -> seconds till night, timeTillDay: night time -> seconds till day). */
+function transitions(time) {
+    if (!time.timeTillActive) return { secondsTillNight: null, secondsTillDay: null };
+    const lookup = (object) => {
+        const keys = Object.keys(object).map(Number);
+        if (keys.length === 0) return null;
+        const closest = keys.reduce((a, b) => (Math.abs(b - time.time) < Math.abs(a - time.time) ? b : a));
+        return object[closest];
+    };
+    const longest = (object) => Math.max(0, ...Object.values(object).map(Number).filter(v => isFinite(v)));
+    if (time.isDay()) {
+        const tillNight = lookup(time.timeTillNight);
+        if (tillNight === null) return { secondsTillNight: null, secondsTillDay: null };
+        const night = longest(time.timeTillDay);
+        return { secondsTillNight: tillNight, secondsTillDay: night > 0 ? tillNight + night : null };
+    }
+    const tillDay = lookup(time.timeTillDay);
+    if (tillDay === null) return { secondsTillNight: null, secondsTillDay: null };
+    const day = longest(time.timeTillNight);
+    return { secondsTillNight: day > 0 ? tillDay + day : null, secondsTillDay: tillDay };
+}
+
 function buildTime(rustplus) {
     const time = rustplus.time;
     if (!time) return null;
 
-    let secondsTillTransition = null;
+    let till = { secondsTillNight: null, secondsTillDay: null };
     try {
-        const str = time.getTimeTillDayOrNight();
-        if (str !== null) secondsTillTransition = TimeLib.getSecondsFromStringTime(str);
+        till = transitions(time);
     }
     catch (e) { /* ignore */ }
 
@@ -107,7 +128,9 @@ function buildTime(rustplus) {
         isDay: time.isDay(),
         dayLengthMinutes: time.dayLengthMinutes,
         timeScale: time.timeScale,
-        secondsTillTransition: secondsTillTransition
+        secondsTillTransition: time.isDay() ? till.secondsTillNight : till.secondsTillDay,
+        secondsTillNight: till.secondsTillNight,
+        secondsTillDay: till.secondsTillDay
     };
 }
 
