@@ -26,8 +26,8 @@ All endpoints accept an optional `?guild=<discord guild id>`. Without it, the fi
 | --- | --- |
 | `GET /api/v1/health` | `{ "ok": true }`, no token needed. |
 | `GET /api/v1/servers` | Rust servers the bot is connected to, one per Discord guild. |
-| `GET /api/v1/state` | Full state: server info, in-game time, team, map markers, oil rigs, smart devices, timers. |
-| `GET /api/v1/events?limit=50` | Last notifications (newest first, max 100). |
+| `GET /api/v1/state` | Full state: server info, in-game time (with `secondsTillNight` and `secondsTillDay` once the bot has seen a full in-game day), team, map markers, oil rigs, smart devices, timers. |
+| `GET /api/v1/events?limit=50` | Last notifications (newest first, max 100). They are kept in `instances/api_events.cache`, so they survive a bot restart. |
 | `GET /api/v1/map.jpg` | Map image of the server. Supports `If-None-Match`. |
 | `GET /api/v1/stream` | [Server-Sent Events](https://developer.mozilla.org/docs/Web/API/Server-sent_events): `state` after every poll of the bot and every live position update (default every 2 s), `notification` for every new event. |
 
