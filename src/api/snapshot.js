@@ -19,6 +19,7 @@
 */
 
 const Map = require('../util/map.js');
+const Trackers = require('./trackers.js');
 const TimeLib = require('../util/timer.js');
 
 /* Builds the JSON state that the HTTP API serves for one rustplus instance. Every section is built defensively:
@@ -281,6 +282,15 @@ function buildTimers(rustplus) {
     })).filter(timer => timer.leftMs !== null);
 }
 
+function buildTrackersSafe(client, rustplus) {
+    try {
+        return Trackers.build(client, rustplus.guildId, rustplus);
+    }
+    catch (e) {
+        return null;
+    }
+}
+
 module.exports = {
     /**
      *  @param {object|null} live Positions from the API live poll ({ players: Map, markers: Map }), newer than
@@ -304,7 +314,8 @@ module.exports = {
             oilRigs: buildOilRigs(client, rustplus, project, server),
             lastEvents: buildEventTimes(rustplus),
             devices: buildDevices(rustplus, server),
-            timers: buildTimers(rustplus)
+            timers: buildTimers(rustplus),
+            trackers: buildTrackersSafe(client, rustplus)
         };
     }
 };

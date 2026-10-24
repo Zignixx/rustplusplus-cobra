@@ -38,7 +38,7 @@ module.exports = {
         needAdminPrivileges: process.env.RPP_NEED_ADMIN_PRIVILEGES || true, /* If true, only admins can delete (server, switch..), manage credentials and reset a channel */
     },
     api: {
-        /* Read-only HTTP API for dashboards, disabled while RPP_API_TOKEN is empty. */
+        /* HTTP API for dashboards (read-only except Battlemetrics trackers), disabled while RPP_API_TOKEN is empty. */
         token: cleanToken(process.env.RPP_API_TOKEN),
         port: parseInt(process.env.RPP_API_PORT) || 24343,
         host: process.env.RPP_API_HOST || '0.0.0.0',

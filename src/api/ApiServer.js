@@ -24,12 +24,14 @@ const Http = require('http');
 const ApiEvents = require('./apiEvents.js');
 const Config = require('../../config');
 const Snapshot = require('./snapshot.js');
+const Trackers = require('./trackers.js');
 
 const API_PREFIX = '/api/v1';
 const STREAM_HEARTBEAT_MS = 20 * 1000;
 const MIN_TOKEN_LENGTH = 16;
+const MAX_BODY_BYTES = 16 * 1024;
 
-/* Read-only HTTP API for dashboards (e.g. the Corsair Xenon Edge widget).
+/* HTTP API for dashboards (e.g. the Corsair Xenon Edge widget).
  *
  *  GET /api/v1/health                 -> { ok: true }                            (no token needed)
  *  GET /api/v1/servers                -> rustplus instances the bot runs
@@ -37,6 +39,14 @@ const MIN_TOKEN_LENGTH = 16;
  *  GET /api/v1/events?guild=ID&limit= -> recent notifications, newest first
  *  GET /api/v1/map.jpg?guild=ID       -> map image of the connected server
  *  GET /api/v1/stream?guild=ID        -> Server-Sent Events: `state` after every poll, `notification` per event
+ *
+ *  Battlemetrics trackers (the same as the tracker messages in Discord, changes show up there too):
+ *  GET    /api/v1/trackers                              -> trackers with every player's online status
+ *  GET    /api/v1/battlemetrics/online?q=name           -> players online on the server right now
+ *  POST   /api/v1/trackers               {name}         -> create a tracker for the connected server
+ *  DELETE /api/v1/trackers/:id
+ *  POST   /api/v1/trackers/:id/players   {playerId} or {steamId}
+ *  DELETE /api/v1/trackers/:id/players/:playerIdOrSteamId
  *
  *  Authentication: `Authorization: Bearer <RPP_API_TOKEN>` (or `?token=` for clients that can't set headers).
  *  Without `guild`, the first connected instance is used.
@@ -108,7 +118,7 @@ class ApiServer {
     async handle(req, res) {
         res.setHeader('Access-Control-Allow-Origin', '*');
         res.setHeader('Access-Control-Allow-Headers', 'Authorization, Content-Type');
-        res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
+        res.setHeader('Access-Control-Allow-Methods', 'GET, POST, DELETE, OPTIONS');
 
         if (req.method === 'OPTIONS') {
             res.writeHead(204);
@@ -118,13 +128,19 @@ class ApiServer {
         const url = new URL(req.url, 'http://localhost');
         const path = url.pathname.replace(/\/+$/, '');
 
-        if (req.method !== 'GET') return this.sendJson(res, 405, { error: 'Method not allowed' });
+        if (!['GET', 'POST', 'DELETE'].includes(req.method)) return this.sendJson(res, 405, { error: 'Method not allowed' });
         if (path === `${API_PREFIX}/health`) return this.sendJson(res, 200, { ok: true });
 
         if (!this.isAuthorized(req, url)) {
             res.setHeader('WWW-Authenticate', 'Bearer');
             return this.sendJson(res, 401, { error: 'Invalid or missing token' });
         }
+
+        if (path === `${API_PREFIX}/trackers` || path.startsWith(`${API_PREFIX}/trackers/`) ||
+            path === `${API_PREFIX}/battlemetrics/online`) {
+            return this.handleTrackers(req, res, url, path);
+        }
+        if (req.method !== 'GET') return this.sendJson(res, 405, { error: 'Method not allowed' });
 
         switch (path) {
             case `${API_PREFIX}/servers`: return this.handleServers(res);
@@ -210,6 +226,84 @@ class ApiServer {
             'ETag': etag
         });
         return res.end(buffer);
+    }
+
+    async handleTrackers(req, res, url, path) {
+        const rustplus = this.getRustplus(url.searchParams.get('guild'));
+        const guildId = url.searchParams.get('guild') || (rustplus ? rustplus.guildId : null);
+        if (!guildId || !this.client.getInstance(guildId)) return this.sendJson(res, 404, { error: 'No Rust server connected' });
+
+        const parts = path.slice(API_PREFIX.length + 1).split('/').map(decodeURIComponent); /* e.g. trackers/12/players/34 */
+        try {
+            let result = null;
+            let changed = false;
+            if (parts[0] === 'battlemetrics' && req.method === 'GET') {
+                const limit = Math.min(Math.max(parseInt(url.searchParams.get('limit')) || 100, 1), 500);
+                result = Trackers.searchOnline(this.client, guildId, rustplus, url.searchParams.get('q'), limit);
+            }
+            else if (parts.length === 1 && req.method === 'GET') {
+                result = Trackers.build(this.client, guildId, rustplus);
+            }
+            else if (parts.length === 1 && req.method === 'POST') {
+                const body = await this.readJson(req);
+                result = await Trackers.createTracker(this.client, guildId, rustplus, body.name);
+                changed = true;
+            }
+            else if (parts.length === 2 && req.method === 'DELETE') {
+                await Trackers.deleteTracker(this.client, guildId, parts[1]);
+                result = { ok: true };
+                changed = true;
+            }
+            else if (parts.length === 3 && parts[2] === 'players' && req.method === 'POST') {
+                const body = await this.readJson(req);
+                result = await Trackers.addPlayer(this.client, guildId, parts[1], body);
+                changed = true;
+            }
+            else if (parts.length === 4 && parts[2] === 'players' && req.method === 'DELETE') {
+                result = await Trackers.removePlayer(this.client, guildId, parts[1], parts[3]);
+                changed = true;
+            }
+            else {
+                return this.sendJson(res, 404, { error: 'Not found' });
+            }
+
+            if (changed) {
+                this.client.log('API', `Tracker change via API: ${req.method} ${path}`);
+                this.pushState(guildId);
+            }
+            return this.sendJson(res, 200, result);
+        }
+        catch (e) {
+            if (e instanceof Trackers.ApiError) return this.sendJson(res, e.status, { error: e.message });
+            throw e;
+        }
+    }
+
+    readJson(req) {
+        return new Promise((resolve, reject) => {
+            let size = 0;
+            const chunks = [];
+            req.on('data', chunk => {
+                size += chunk.length;
+                if (size > MAX_BODY_BYTES) {
+                    reject(new Trackers.ApiError(413, 'Body too large'));
+                    req.destroy();
+                    return;
+                }
+                chunks.push(chunk);
+            });
+            req.on('end', () => {
+                if (chunks.length === 0) return resolve({});
+                try {
+                    const body = JSON.parse(Buffer.concat(chunks).toString('utf8'));
+                    resolve(body && typeof body === 'object' ? body : {});
+                }
+                catch (e) {
+                    reject(new Trackers.ApiError(400, 'Invalid JSON body'));
+                }
+            });
+            req.on('error', reject);
+        });
     }
 
     handleStream(req, res, url) {

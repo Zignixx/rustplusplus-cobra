@@ -18,6 +18,7 @@
 
 */
 
+const ApiEvents = require('../api/apiEvents.js');
 const Constants = require('../util/constants.js');
 const DiscordMessages = require('../discordTools/discordMessages.js');
 const DiscordTools = require('../discordTools/discordTools.js');
@@ -124,6 +125,9 @@ module.exports = {
                         await DiscordMessages.sendActivityNotificationMessage(
                             guildId, content.serverId, Constants.COLOR_ACTIVE, str, null, content.title,
                             content.everyone);
+                        ApiEvents.publish(guildId, 'tracker', {
+                            kind: 'online', name: player.name, playerId: playerId, tracker: content.name, text: str
+                        });
                         if (rustplus && (rustplus.serverId === content.serverId) && content.inGame) {
                             rustplus.sendInGameMessage(str);
                         }
@@ -142,6 +146,9 @@ module.exports = {
                         await DiscordMessages.sendActivityNotificationMessage(
                             guildId, content.serverId, Constants.COLOR_ACTIVE, str, null, content.title,
                             content.everyone);
+                        ApiEvents.publish(guildId, 'tracker', {
+                            kind: 'online', name: player.name, playerId: playerId, tracker: content.name, text: str
+                        });
                         if (rustplus && (rustplus.serverId === content.serverId) && content.inGame) {
                             rustplus.sendInGameMessage(str);
                         }
@@ -161,6 +168,9 @@ module.exports = {
                         await DiscordMessages.sendActivityNotificationMessage(
                             guildId, content.serverId, Constants.COLOR_INACTIVE, str, null, content.title,
                             content.everyone);
+                        ApiEvents.publish(guildId, 'tracker', {
+                            kind: 'offline', name: player.name, playerId: playerId, tracker: content.name, text: str
+                        });
                         if (rustplus && (rustplus.serverId === content.serverId) && content.inGame) {
                             rustplus.sendInGameMessage(str);
                         }
