@@ -256,11 +256,11 @@ class ApiServer {
             }
             else if (parts.length === 3 && parts[2] === 'players' && req.method === 'POST') {
                 const body = await this.readJson(req);
-                result = await Trackers.addPlayer(this.client, guildId, parts[1], body);
+                result = await Trackers.addPlayer(this.client, guildId, parts[1], body, rustplus);
                 changed = true;
             }
             else if (parts.length === 4 && parts[2] === 'players' && req.method === 'DELETE') {
-                result = await Trackers.removePlayer(this.client, guildId, parts[1], parts[3]);
+                result = await Trackers.removePlayer(this.client, guildId, parts[1], parts[3], rustplus);
                 changed = true;
             }
             else {

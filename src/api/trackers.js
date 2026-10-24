@@ -68,7 +68,7 @@ function playerStatus(bm, playerId) {
     };
 }
 
-function serializeTracker(client, trackerId, tracker) {
+function serializeTracker(client, trackerId, tracker, currentServerId = null) {
     const bm = client.battlemetricsInstances[tracker.battlemetricsId] || null;
     const players = tracker.players.map(p => Object.assign({
         name: p.name,
@@ -84,6 +84,8 @@ function serializeTracker(client, trackerId, tracker) {
         serverId: tracker.serverId,
         title: tracker.title,
         battlemetricsId: tracker.battlemetricsId,
+        /* Trackers keep the Battlemetrics data of the server they were made for (e.g. an older wipe) */
+        current: currentServerId !== null && tracker.serverId === currentServerId,
         clanTag: tracker.clanTag,
         online: players.filter(p => p.status === 'online').length,
         players: players
@@ -107,8 +109,10 @@ module.exports = {
                 streamerMode: bm ? bm.streamerMode : null,
                 onlinePlayers: bm && bm.lastUpdateSuccessful ? bm.onlinePlayers.length : null
             },
+            currentServerId: rustplus ? rustplus.serverId : null,
             trackers: Object.entries(instance && instance.trackers ? instance.trackers : {})
-                .map(([id, tracker]) => serializeTracker(client, id, tracker))
+                .map(([id, tracker]) => serializeTracker(client, id, tracker, rustplus ? rustplus.serverId : null))
+                .sort((a, b) => (b.current ? 1 : 0) - (a.current ? 1 : 0))
         };
     },
 
@@ -174,7 +178,7 @@ module.exports = {
         };
         client.setInstance(guildId, instance);
         await DiscordMessages.sendTrackerMessage(guildId, trackerId);
-        return serializeTracker(client, trackerId, client.getInstance(guildId).trackers[trackerId]);
+        return serializeTracker(client, trackerId, client.getInstance(guildId).trackers[trackerId], rustplus.serverId);
     },
 
     deleteTracker: async function (client, guildId, trackerId) {
@@ -188,7 +192,7 @@ module.exports = {
     },
 
     /** Same rules as the "Add player" modal: a SteamID64 or a Battlemetrics player id */
-    addPlayer: async function (client, guildId, trackerId, body) {
+    addPlayer: async function (client, guildId, trackerId, body, rustplus = null) {
         if (!bmEnabled()) throw new ApiError(409, 'Battlemetrics is disabled (no RPP_BATTLEMETRICS_TOKEN)');
         const instance = client.getInstance(guildId);
         const tracker = instance.trackers[trackerId];
@@ -204,15 +208,22 @@ module.exports = {
         }
 
         const bm = client.battlemetricsInstances[tracker.battlemetricsId];
+        /* Players picked from the live search come from the connected server's Battlemetrics data */
+        const currentBm = getBm(client, guildId, rustplus).bm;
+        const knownName = playerId => [bm, currentBm].map(b => (b && b.players.hasOwnProperty(playerId) ? b.players[playerId]['name'] : null))
+            .find(n => n) || null;
         let name = null, steamId = null, playerId = null;
         if (isSteamId64) {
             steamId = id;
             name = await Scrape.scrapeSteamProfileName(client, id);
-            if (name && bm) playerId = Object.keys(bm.players).find(e => bm.players[e]['name'] === name) || null;
+            for (const b of [bm, currentBm]) {
+                if (!name || !b || playerId) continue;
+                playerId = Object.keys(b.players).find(e => b.players[e]['name'] === name) || null;
+            }
         }
         else {
             playerId = id;
-            name = bm && bm.players.hasOwnProperty(id) ? bm.players[id]['name'] : (body.name ? `${body.name}` : '-');
+            name = knownName(id) || (body.name ? `${body.name}`.slice(0, 64) : '-');
         }
 
         /* Re-read: the Steam lookup awaited, the instance may have changed meanwhile */
@@ -222,10 +233,10 @@ module.exports = {
         freshTracker.players.push({ name: name || '-', steamId: steamId, playerId: playerId });
         client.setInstance(guildId, fresh);
         await DiscordMessages.sendTrackerMessage(guildId, trackerId);
-        return serializeTracker(client, trackerId, freshTracker);
+        return serializeTracker(client, trackerId, freshTracker, rustplus ? rustplus.serverId : null);
     },
 
-    removePlayer: async function (client, guildId, trackerId, id) {
+    removePlayer: async function (client, guildId, trackerId, id, rustplus = null) {
         const instance = client.getInstance(guildId);
         const tracker = instance.trackers[trackerId];
         if (!tracker) throw new ApiError(404, 'Tracker not found');
@@ -235,6 +246,6 @@ module.exports = {
         if (tracker.players.length === before) throw new ApiError(404, 'Player not in tracker');
         client.setInstance(guildId, instance);
         await DiscordMessages.sendTrackerMessage(guildId, trackerId);
-        return serializeTracker(client, trackerId, tracker);
+        return serializeTracker(client, trackerId, tracker, rustplus ? rustplus.serverId : null);
     }
 };

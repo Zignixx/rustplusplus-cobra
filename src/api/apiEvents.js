@@ -19,8 +19,13 @@
 */
 
 const EventEmitter = require('events');
+const Fs = require('fs');
+const Path = require('path');
 
 const MAX_RECENT_EVENTS = 100;
+const SAVE_DELAY_MS = 5000;
+/* Not .json: every .json file in instances/ is treated as a guild instance. */
+const CACHE_FILE = Path.join(__dirname, '..', '..', 'instances', 'api_events.cache');
 
 /* Collects notifications (map events, alarms, team activity, team chat) per guild for the HTTP API and lets the API
    push them to stream subscribers. Publishing is cheap and never throws, so call sites in the bot don't need guards. */
@@ -31,12 +36,38 @@ class ApiEvents extends EventEmitter {
         this.recent = new Object();
         /* Start at the boot time, so ids stay unique across bot restarts for clients that keep a feed. */
         this.nextId = Date.now();
+        this.saveTimer = null;
+        this.load();
+    }
+
+    /* The recent events survive bot restarts, so dashboards still show who joined or left before the restart. */
+    load() {
+        try {
+            if (!Fs.existsSync(CACHE_FILE)) return;
+            const data = JSON.parse(Fs.readFileSync(CACHE_FILE, 'utf8'));
+            if (data === null || typeof data !== 'object') return;
+            for (const [guildId, events] of Object.entries(data)) {
+                if (!Array.isArray(events)) continue;
+                this.recent[guildId] = events.filter(e => e && typeof e.id === 'number').slice(0, MAX_RECENT_EVENTS);
+                for (const e of this.recent[guildId]) if (e.id >= this.nextId) this.nextId = e.id + 1;
+            }
+        }
+        catch (e) { /* A broken cache only means an empty feed. */ }
+    }
+
+    scheduleSave() {
+        if (this.saveTimer !== null) return;
+        this.saveTimer = setTimeout(() => {
+            this.saveTimer = null;
+            Fs.writeFile(CACHE_FILE, JSON.stringify(this.recent), () => { });
+        }, SAVE_DELAY_MS);
+        if (this.saveTimer.unref) this.saveTimer.unref();
     }
 
     /**
      *  Publish a notification.
      *  @param {string} guildId The guild the event belongs to.
-     *  @param {string} type event | alarm | connection | death | chat
+     *  @param {string} type event | alarm | connection | death | chat | tracker
      *  @param {object} data Event specific fields, should contain a human readable `text`.
      */
     publish(guildId, type, data = {}) {
@@ -46,6 +77,7 @@ class ApiEvents extends EventEmitter {
             if (!this.recent.hasOwnProperty(guildId)) this.recent[guildId] = [];
             this.recent[guildId].unshift(event);
             if (this.recent[guildId].length > MAX_RECENT_EVENTS) this.recent[guildId].length = MAX_RECENT_EVENTS;
+            this.scheduleSave();
 
             this.emit('event', event);
         }
