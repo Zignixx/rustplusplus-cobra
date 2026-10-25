@@ -9,6 +9,7 @@ rustplusplus can serve a small HTTP API, for example for a dashboard on a second
 | `RPP_API_PORT` | `24343` | Port of the HTTP server. |
 | `RPP_API_HOST` | `0.0.0.0` | Interface to listen on. |
 | `RPP_API_LIVE_INTERVAL` | `2000` | While a dashboard is connected to `/stream`, team and map marker positions are fetched this often (ms, min 1000, 2 Rust+ tokens each). `0` turns it off; positions then update with `RPP_POLLING_INTERVAL`. |
+| `RPP_SERVER_QUERY_INTERVAL` | `60000` | How often the server's own player list is read with the public Valve server query (ms, min 15000, no Rust+ tokens). `0` turns it off. |
 
 With Docker, publish the port (`-p 24343:24343` or `ports:` in `docker-compose.yml`). The API speaks plain HTTP and the
 token can change trackers: only expose it in your LAN or put it behind a reverse proxy with TLS.
@@ -40,11 +41,13 @@ Needs `RPP_BATTLEMETRICS_TOKEN`.
 | --- | --- |
 | `GET /api/v1/trackers` | Trackers with every player's status (`online` / `offline` / `unknown`) and seconds online or offline. Also part of `/state` as `trackers`. |
 | `GET /api/v1/battlemetrics/online?q=name&limit=100` | Players online on the connected server right now (Battlemetrics), with the trackers they are in. |
+| `GET /api/v1/server/players?q=name&limit=500` | The server's own player list, read every minute with the public Valve server query (A2S, no password): in-game name and seconds connected. Each player is cross-checked with the online Battlemetrics players (same name, at least 97 % alike) and the trackers they are in. The query port comes from Battlemetrics or is probed (game port, +1, +2, 28015, 28017); `error` says when the server does not answer. |
+| `POST /api/v1/server/query-port` `{port}` | Sets the server's query port when it isn't found automatically (`null` = find it again). |
 | `POST /api/v1/battlemetrics/steam-friends` `{profile, steamApiKey?, minScore?}` | Friends of a Steam profile (link, SteamID64 or custom URL name) who are on the server right now. Battlemetrics only knows in-game names, so friends are matched by name similarity (`minScore` 0.5..1, default 0.8); every candidate comes with its `score`. With `steamApiKey` the Steam Web API is used, without it the public friends page. The friend list has to be public. Friends Steam shows playing Rust without a match are in `playingRustElsewhere`. Results are cached 10 minutes. |
 | `POST /api/v1/steam/status` `{profiles: [...], steamApiKey?}` | Steam online state of up to 50 profiles (links, SteamID64s or custom URL names): `offline`, `online`, `away` or `in-game` with `game` and `playingRust`. One Steam API call with a key, the public profile of each without. Cached for a minute. Works without a connected Rust server. |
 | `POST /api/v1/trackers` | Create a tracker for the connected server. Body: `{ "name": "Neighbours" }` |
 | `DELETE /api/v1/trackers/:id` | Delete a tracker. |
-| `POST /api/v1/trackers/:id/players` | Add a player. Body: `{ "playerId": "<Battlemetrics id>" }` or `{ "steamId": "<SteamID64>" }`, or both (e.g. a Steam friend matched to a player on the server). |
+| `POST /api/v1/trackers/:id/players` | Add a player. Body: `{ "playerId": "<Battlemetrics id>" }` or `{ "steamId": "<SteamID64>" }`, or both (e.g. a Steam friend matched to a player on the server), or only `{ "name": "..." }` for a player only the server list knows. Every tracked player has a `server` field (online on the server list, seconds) next to the Battlemetrics status; players without a Battlemetrics id take their status from the server list. |
 | `DELETE /api/v1/trackers/:id/players/:playerIdOrSteamId` | Remove a player. |
 
 Tracker players coming online or going offline are pushed as notifications with `type: "tracker"`

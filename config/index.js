@@ -45,7 +45,11 @@ module.exports = {
         /* While a dashboard is connected, team and map marker positions are polled this often (2 Rust+ tokens
            each time). 0 disables it; positions then update with the normal polling interval. */
         liveIntervalMs: process.env.RPP_API_LIVE_INTERVAL === undefined ? 2000 :
-            (parseInt(process.env.RPP_API_LIVE_INTERVAL) > 0 ? Math.max(parseInt(process.env.RPP_API_LIVE_INTERVAL), 1000) : 0)
+            (parseInt(process.env.RPP_API_LIVE_INTERVAL) > 0 ? Math.max(parseInt(process.env.RPP_API_LIVE_INTERVAL), 1000) : 0),
+        /* The server's own player list (public Valve query, no password) is read this often for the trackers.
+           0 disables it. */
+        serverQueryIntervalMs: process.env.RPP_SERVER_QUERY_INTERVAL === undefined ? 60000 :
+            (parseInt(process.env.RPP_SERVER_QUERY_INTERVAL) > 0 ? Math.max(parseInt(process.env.RPP_SERVER_QUERY_INTERVAL), 15000) : 0)
     },
     battlemetrics: {
         token: cleanToken(process.env.RPP_BATTLEMETRICS_TOKEN)

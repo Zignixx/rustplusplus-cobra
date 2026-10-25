@@ -298,13 +298,15 @@ function normName(name) {
         .replace(/\s+/g, ' ').trim();
 }
 
-/* Spellings of a name to compare: as is, without a leading clan tag ("[TAG] name") and each part of
+/* Spellings of a name to compare: as is, without a leading clan tag ("[TAG] name") and the name part of
    "TAG | name", reduced to letters and digits. */
 function nameVariants(name) {
     const n = normName(name);
     const variants = new Set([n]);
     const untagged = n.replace(/^[[({<][^\])}>]{1,12}[\])}>]\s*/, '');
-    for (const v of [untagged, ...untagged.split('|')]) {
+    /* "TAG | name": the part after the last bar is the name; the tag alone must not match other clan members */
+    const parts = untagged.split('|');
+    for (const v of [untagged, parts[parts.length - 1]]) {
         const core = v.replace(/[^\p{L}\p{N}]+/gu, '');
         if (core) variants.add(core);
     }

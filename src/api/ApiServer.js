@@ -26,6 +26,7 @@ const Config = require('../../config');
 const Snapshot = require('./snapshot.js');
 const Trackers = require('./trackers.js');
 const SteamFriends = require('./steamFriends.js');
+const ServerQuery = require('./serverQuery.js');
 
 const API_PREFIX = '/api/v1';
 const STREAM_HEARTBEAT_MS = 20 * 1000;
@@ -52,6 +53,8 @@ const MAX_STEAM_PROFILES = 50;
  *  POST   /api/v1/trackers/:id/players   {playerId} or {steamId} (or both)
  *  DELETE /api/v1/trackers/:id/players/:playerIdOrSteamId
  *
+ *  GET    /api/v1/server/players?q=             -> the server's own player list (public query), with Battlemetrics matches
+ *  POST   /api/v1/server/query-port   {port|null} -> set the server's query port if it isn't found automatically
  *  POST   /api/v1/steam/status       {profiles: [...], steamApiKey?} -> Steam online state (offline/online/away/in-game)
  *
  *  Authentication: `Authorization: Bearer <RPP_API_TOKEN>` (or `?token=` for clients that can't set headers).
@@ -146,7 +149,8 @@ class ApiServer {
             return this.handleSteamStatus(req, res);
         }
         if (path === `${API_PREFIX}/trackers` || path.startsWith(`${API_PREFIX}/trackers/`) ||
-            path === `${API_PREFIX}/battlemetrics/online` || path === `${API_PREFIX}/battlemetrics/steam-friends`) {
+            path === `${API_PREFIX}/battlemetrics/online` || path === `${API_PREFIX}/battlemetrics/steam-friends` ||
+            path === `${API_PREFIX}/server/players` || path === `${API_PREFIX}/server/query-port`) {
             return this.handleTrackers(req, res, url, path);
         }
         if (req.method !== 'GET') return this.sendJson(res, 405, { error: 'Method not allowed' });
@@ -256,7 +260,19 @@ class ApiServer {
         try {
             let result = null;
             let changed = false;
-            if (parts[0] === 'battlemetrics' && parts[1] === 'steam-friends' && req.method === 'POST') {
+            if (parts[0] === 'server' && parts[1] === 'players' && req.method === 'GET') {
+                const limit = Math.min(Math.max(parseInt(url.searchParams.get('limit')) || 500, 1), 1000);
+                result = Trackers.serverPlayers(this.client, guildId, rustplus, url.searchParams.get('q'), limit);
+            }
+            else if (parts[0] === 'server' && parts[1] === 'query-port' && req.method === 'POST') {
+                const body = await this.readJson(req);
+                const port = body.port === null || body.port === '' || body.port === undefined ? null : parseInt(body.port);
+                if (port !== null && !(port > 0 && port < 65536)) return this.sendJson(res, 400, { error: 'port must be 1..65535 or null' });
+                await ServerQuery.setQueryPort(guildId, port);
+                result = Trackers.serverPlayers(this.client, guildId, rustplus, null, 1);
+                changed = true;
+            }
+            else if (parts[0] === 'battlemetrics' && parts[1] === 'steam-friends' && req.method === 'POST') {
                 /* POST, so the Steam API key travels in the body and not in urls or logs */
                 result = await Trackers.steamFriendsOnServer(this.client, guildId, rustplus, await this.readJson(req));
             }
@@ -460,6 +476,7 @@ module.exports = {
     start: function (client) {
         const server = new ApiServer(client);
         server.start();
+        if (Config.api.token) ServerQuery.start(client);
         return server;
     }
 };

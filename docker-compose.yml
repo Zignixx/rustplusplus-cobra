@@ -17,5 +17,7 @@ services:
             - RPP_API_TOKEN=
             # Optional: how often positions are refreshed for connected dashboards (ms, default 2000)
             # - RPP_API_LIVE_INTERVAL=2000
+            # Optional: how often the server's own player list is read (ms, default 60000, 0 = off)
+            # - RPP_SERVER_QUERY_INTERVAL=60000
         container_name: rpp
         image: ghcr.io/zignixx/rustplusplus-cobra:latest

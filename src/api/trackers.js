@@ -24,6 +24,7 @@ const DiscordMessages = require('../discordTools/discordMessages.js');
 const DiscordTools = require('../discordTools/discordTools.js');
 const Scrape = require('../util/scrape.js');
 const SteamFriends = require('./steamFriends.js');
+const ServerQuery = require('./serverQuery.js');
 
 /* Battlemetrics trackers for the HTTP API: the same data and actions as the tracker messages and buttons in
    Discord. Every change goes through the instance file and refreshes the tracker message in Discord. */
@@ -69,15 +70,37 @@ function playerStatus(bm, playerId) {
     };
 }
 
-function serializeTracker(client, trackerId, tracker, currentServerId = null) {
+/* Online status from the server's own player list, by tracked name or Battlemetrics name */
+function serverStatus(query, names) {
+    if (!query || !query.players) return null;
+    const hit = ServerQuery.find(query, names);
+    if (hit) return { online: true, name: hit.name, seconds: hit.seconds, lastSeen: null };
+    const last = ServerQuery.lastSeen(query, names);
+    return { online: false, name: null, seconds: last ? Math.round((Date.now() - last) / 1000) : null, lastSeen: last };
+}
+
+function serializeTracker(client, trackerId, tracker, currentServerId = null, guildId = null) {
     const bm = client.battlemetricsInstances[tracker.battlemetricsId] || null;
-    const players = tracker.players.map(p => Object.assign({
-        name: p.name,
-        steamId: p.steamId,
-        playerId: p.playerId,
-        steamUrl: p.steamId ? `${Constants.STEAM_PROFILES_URL}${p.steamId}` : null,
-        battlemetricsUrl: p.playerId ? `${Constants.BATTLEMETRICS_PROFILE_URL}${p.playerId}` : null
-    }, playerStatus(bm, p.playerId)));
+    const current = currentServerId !== null && tracker.serverId === currentServerId;
+    const query = current && guildId ? ServerQuery.get(guildId, currentServerId) : null;
+    const players = tracker.players.map(p => {
+        const bmStatus = playerStatus(bm, p.playerId);
+        const server = serverStatus(query, [p.name, bmStatus.bmName]);
+        const entry = Object.assign({
+            name: p.name,
+            steamId: p.steamId,
+            playerId: p.playerId,
+            steamUrl: p.steamId ? `${Constants.STEAM_PROFILES_URL}${p.steamId}` : null,
+            battlemetricsUrl: p.playerId ? `${Constants.BATTLEMETRICS_PROFILE_URL}${p.playerId}` : null,
+            server: server
+        }, bmStatus);
+        /* Players only the server list knows (no Battlemetrics id): their status comes from there */
+        if (!p.playerId && server) {
+            entry.status = server.online ? 'online' : (server.lastSeen ? 'offline' : 'unknown');
+            entry.seconds = server.seconds;
+        }
+        return entry;
+    });
 
     return {
         id: `${trackerId}`,
@@ -86,7 +109,7 @@ function serializeTracker(client, trackerId, tracker, currentServerId = null) {
         title: tracker.title,
         battlemetricsId: tracker.battlemetricsId,
         /* Trackers keep the Battlemetrics data of the server they were made for (e.g. an older wipe) */
-        current: currentServerId !== null && tracker.serverId === currentServerId,
+        current: current,
         clanTag: tracker.clanTag,
         online: players.filter(p => p.status === 'online').length,
         players: players
@@ -150,7 +173,7 @@ module.exports = {
             },
             currentServerId: rustplus ? rustplus.serverId : null,
             trackers: Object.entries(instance && instance.trackers ? instance.trackers : {})
-                .map(([id, tracker]) => serializeTracker(client, id, tracker, rustplus ? rustplus.serverId : null))
+                .map(([id, tracker]) => serializeTracker(client, id, tracker, rustplus ? rustplus.serverId : null, guildId))
                 .sort((a, b) => (b.current ? 1 : 0) - (a.current ? 1 : 0))
         };
     },
@@ -235,6 +258,63 @@ module.exports = {
         };
     },
 
+    /**
+     *  The server's own player list (public server query), each player cross-checked with Battlemetrics: the
+     *  online Battlemetrics player with the same name (at least 97 % alike) and the trackers they are in.
+     */
+    serverPlayers: function (client, guildId, rustplus, query, limit = 500) {
+        if (!rustplus) throw new ApiError(409, 'No Rust server connected');
+        const st = ServerQuery.get(guildId, rustplus.serverId);
+        const { bmId, bm } = getBm(client, guildId, rustplus);
+        const bmOk = bmEnabled() && bm && bm.lastUpdateSuccessful;
+        const instance = client.getInstance(guildId);
+        const tracked = trackedIndex(instance);
+        const byName = new Object();
+        for (const [trackerId, tracker] of Object.entries(instance.trackers || {})) {
+            if (tracker.serverId !== rustplus.serverId) continue;
+            for (const p of tracker.players) {
+                const n = SteamFriends.normName(p.name);
+                (byName[n] = byName[n] || []).push(`${trackerId}`);
+            }
+        }
+
+        const bmOnline = bmOk ? bm.getOnlinePlayerIdsOrderedByTime().map(id => bm.players[id]).filter(p => p)
+            .map(p => ({ p: p, prepared: SteamFriends.prepareName(p.name) })) : [];
+        const q = (query || '').trim().toLowerCase();
+        const list = (st && st.players ? st.players : [])
+            .filter(p => !q || `${p.name}`.toLowerCase().includes(q))
+            .sort((a, b) => a.seconds - b.seconds)
+            .slice(0, limit)
+            .map(p => {
+                const prepared = SteamFriends.prepareName(p.name);
+                let best = null, bestScore = 0;
+                for (const o of bmOnline) {
+                    const score = SteamFriends.similarityOf(prepared, o.prepared, 0.97);
+                    if (score > bestScore) { best = o.p; bestScore = score; }
+                }
+                const trackers = new Set(byName[SteamFriends.normName(p.name)] || []);
+                if (best) for (const t of tracked.byPlayer[best.id] || []) trackers.add(t);
+                return {
+                    name: p.name,
+                    seconds: p.seconds,
+                    score: p.score,
+                    battlemetrics: best ? onlinePlayer(bm, best, tracked.byPlayer) : null,
+                    trackedBy: [...trackers]
+                };
+            });
+
+        return {
+            available: !!(st && st.players),
+            error: st ? st.error : (Config.api.serverQueryIntervalMs ? 'The first server query is still running' : 'The server query is turned off (RPP_SERVER_QUERY_INTERVAL=0)'),
+            host: st ? st.host : null,
+            port: st ? st.port : null,
+            queriedAt: st ? st.queriedAt : null,
+            total: st && st.players ? st.players.length : 0,
+            battlemetrics: { id: bmId, available: !!bmOk, onlinePlayers: bmOk ? bm.onlinePlayers.length : null },
+            players: list
+        };
+    },
+
     createTracker: async function (client, guildId, rustplus, name) {
         if (!bmEnabled()) throw new ApiError(409, 'Battlemetrics is disabled (no RPP_BATTLEMETRICS_TOKEN)');
         if (!rustplus) throw new ApiError(409, 'No Rust server connected');
@@ -257,7 +337,7 @@ module.exports = {
         };
         client.setInstance(guildId, instance);
         await DiscordMessages.sendTrackerMessage(guildId, trackerId);
-        return serializeTracker(client, trackerId, client.getInstance(guildId).trackers[trackerId], rustplus.serverId);
+        return serializeTracker(client, trackerId, client.getInstance(guildId).trackers[trackerId], rustplus.serverId, guildId);
     },
 
     deleteTracker: async function (client, guildId, trackerId) {
@@ -272,10 +352,21 @@ module.exports = {
 
     /** Same rules as the "Add player" modal: a SteamID64 or a Battlemetrics player id */
     addPlayer: async function (client, guildId, trackerId, body, rustplus = null) {
-        if (!bmEnabled()) throw new ApiError(409, 'Battlemetrics is disabled (no RPP_BATTLEMETRICS_TOKEN)');
         const instance = client.getInstance(guildId);
         const tracker = instance.trackers[trackerId];
         if (!tracker) throw new ApiError(404, 'Tracker not found');
+
+        /* Only a name (a player from the server's own list that Battlemetrics doesn't know) */
+        if (!body.steamId && !body.playerId) {
+            const name = `${body.name || ''}`.trim().slice(0, 64);
+            if (!name) throw new ApiError(400, 'name, steamId or playerId required');
+            if (!tracker.players.some(e => SteamFriends.normName(e.name) === SteamFriends.normName(name))) {
+                tracker.players.push({ name: name, steamId: null, playerId: null });
+                client.setInstance(guildId, instance);
+                await DiscordMessages.sendTrackerMessage(guildId, trackerId);
+            }
+            return serializeTracker(client, trackerId, tracker, rustplus ? rustplus.serverId : null, guildId);
+        }
 
         const id = `${body.steamId || body.playerId || ''}`.trim();
         if (!/^\d+$/.test(id)) throw new ApiError(400, 'steamId or playerId (digits) required');
@@ -321,7 +412,7 @@ module.exports = {
         freshTracker.players.push({ name: name || '-', steamId: steamId, playerId: playerId });
         client.setInstance(guildId, fresh);
         await DiscordMessages.sendTrackerMessage(guildId, trackerId);
-        return serializeTracker(client, trackerId, freshTracker, rustplus ? rustplus.serverId : null);
+        return serializeTracker(client, trackerId, freshTracker, rustplus ? rustplus.serverId : null, guildId);
     },
 
     removePlayer: async function (client, guildId, trackerId, id, rustplus = null) {
@@ -334,6 +425,6 @@ module.exports = {
         if (tracker.players.length === before) throw new ApiError(404, 'Player not in tracker');
         client.setInstance(guildId, instance);
         await DiscordMessages.sendTrackerMessage(guildId, trackerId);
-        return serializeTracker(client, trackerId, tracker, rustplus ? rustplus.serverId : null);
+        return serializeTracker(client, trackerId, tracker, rustplus ? rustplus.serverId : null, guildId);
     }
 };
