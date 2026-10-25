@@ -40,9 +40,10 @@ Needs `RPP_BATTLEMETRICS_TOKEN`.
 | --- | --- |
 | `GET /api/v1/trackers` | Trackers with every player's status (`online` / `offline` / `unknown`) and seconds online or offline. Also part of `/state` as `trackers`. |
 | `GET /api/v1/battlemetrics/online?q=name&limit=100` | Players online on the connected server right now (Battlemetrics), with the trackers they are in. |
+| `POST /api/v1/battlemetrics/steam-friends` `{profile, steamApiKey?, minScore?}` | Friends of a Steam profile (link, SteamID64 or custom URL name) who are on the server right now. Battlemetrics only knows in-game names, so friends are matched by name similarity (`minScore` 0.5..1, default 0.8); every candidate comes with its `score`. With `steamApiKey` the Steam Web API is used, without it the public friends page. The friend list has to be public. Friends Steam shows playing Rust without a match are in `playingRustElsewhere`. Results are cached 10 minutes. |
 | `POST /api/v1/trackers` | Create a tracker for the connected server. Body: `{ "name": "Neighbours" }` |
 | `DELETE /api/v1/trackers/:id` | Delete a tracker. |
-| `POST /api/v1/trackers/:id/players` | Add a player. Body: `{ "playerId": "<Battlemetrics id>" }` or `{ "steamId": "<SteamID64>" }` |
+| `POST /api/v1/trackers/:id/players` | Add a player. Body: `{ "playerId": "<Battlemetrics id>" }` or `{ "steamId": "<SteamID64>" }`, or both (e.g. a Steam friend matched to a player on the server). |
 | `DELETE /api/v1/trackers/:id/players/:playerIdOrSteamId` | Remove a player. |
 
 Tracker players coming online or going offline are pushed as notifications with `type: "tracker"`

@@ -43,9 +43,11 @@ const MAX_BODY_BYTES = 16 * 1024;
  *  Battlemetrics trackers (the same as the tracker messages in Discord, changes show up there too):
  *  GET    /api/v1/trackers                              -> trackers with every player's online status
  *  GET    /api/v1/battlemetrics/online?q=name           -> players online on the server right now
+ *  POST   /api/v1/battlemetrics/steam-friends {profile, steamApiKey?, minScore?}
+ *                                                       -> friends of a Steam profile that play on the server
  *  POST   /api/v1/trackers               {name}         -> create a tracker for the connected server
  *  DELETE /api/v1/trackers/:id
- *  POST   /api/v1/trackers/:id/players   {playerId} or {steamId}
+ *  POST   /api/v1/trackers/:id/players   {playerId} or {steamId} (or both)
  *  DELETE /api/v1/trackers/:id/players/:playerIdOrSteamId
  *
  *  Authentication: `Authorization: Bearer <RPP_API_TOKEN>` (or `?token=` for clients that can't set headers).
@@ -137,7 +139,7 @@ class ApiServer {
         }
 
         if (path === `${API_PREFIX}/trackers` || path.startsWith(`${API_PREFIX}/trackers/`) ||
-            path === `${API_PREFIX}/battlemetrics/online`) {
+            path === `${API_PREFIX}/battlemetrics/online` || path === `${API_PREFIX}/battlemetrics/steam-friends`) {
             return this.handleTrackers(req, res, url, path);
         }
         if (req.method !== 'GET') return this.sendJson(res, 405, { error: 'Method not allowed' });
@@ -237,7 +239,11 @@ class ApiServer {
         try {
             let result = null;
             let changed = false;
-            if (parts[0] === 'battlemetrics' && req.method === 'GET') {
+            if (parts[0] === 'battlemetrics' && parts[1] === 'steam-friends' && req.method === 'POST') {
+                /* POST, so the Steam API key travels in the body and not in urls or logs */
+                result = await Trackers.steamFriendsOnServer(this.client, guildId, rustplus, await this.readJson(req));
+            }
+            else if (parts[0] === 'battlemetrics' && parts[1] === 'online' && req.method === 'GET') {
                 const limit = Math.min(Math.max(parseInt(url.searchParams.get('limit')) || 100, 1), 500);
                 result = Trackers.searchOnline(this.client, guildId, rustplus, url.searchParams.get('q'), limit);
             }

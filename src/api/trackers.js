@@ -23,6 +23,7 @@ const Constants = require('../util/constants.js');
 const DiscordMessages = require('../discordTools/discordMessages.js');
 const DiscordTools = require('../discordTools/discordTools.js');
 const Scrape = require('../util/scrape.js');
+const SteamFriends = require('./steamFriends.js');
 
 /* Battlemetrics trackers for the HTTP API: the same data and actions as the tracker messages and buttons in
    Discord. Every change goes through the instance file and refreshes the tracker message in Discord. */
@@ -92,6 +93,44 @@ function serializeTracker(client, trackerId, tracker, currentServerId = null) {
     };
 }
 
+/* Which trackers already contain a player, by Battlemetrics id and by SteamID */
+function trackedIndex(instance) {
+    const byPlayer = new Object(), bySteam = new Object();
+    for (const [trackerId, tracker] of Object.entries(instance.trackers || {})) {
+        for (const p of tracker.players) {
+            if (p.playerId) (byPlayer[p.playerId] = byPlayer[p.playerId] || []).push(`${trackerId}`);
+            if (p.steamId) (bySteam[p.steamId] = bySteam[p.steamId] || []).push(`${trackerId}`);
+        }
+    }
+    return { byPlayer: byPlayer, bySteam: bySteam };
+}
+
+function onlinePlayer(bm, p, trackedBy) {
+    return {
+        playerId: `${p.id}`,
+        name: p.name,
+        onlineSeconds: secondsOf(bm.getOnlineTime(p.id)),
+        firstTime: p.firstTime === true,
+        battlemetricsUrl: `${Constants.BATTLEMETRICS_PROFILE_URL}${p.id}`,
+        trackedBy: trackedBy[p.id] || []
+    };
+}
+
+function currentBmOrThrow(client, guildId, rustplus) {
+    if (!bmEnabled()) throw new ApiError(409, 'Battlemetrics is disabled (no RPP_BATTLEMETRICS_TOKEN)');
+    const { bmId, bm } = getBm(client, guildId, rustplus);
+    if (!bmId) throw new ApiError(409, 'The server has no Battlemetrics id');
+    if (!bm || !bm.lastUpdateSuccessful) throw new ApiError(503, 'Battlemetrics data is not available yet');
+    return { bmId, bm };
+}
+
+const STEAM_ERRORS = {
+    invalid: [400, 'Not a Steam profile link, SteamID64 or custom URL name'],
+    notFound: [404, 'Steam profile not found'],
+    badKey: [400, 'Steam rejected the API key'],
+    unreachable: [502, 'Steam could not be reached, try again in a moment']
+};
+
 module.exports = {
     ApiError: ApiError,
 
@@ -118,34 +157,15 @@ module.exports = {
 
     /** Players currently online on the server according to Battlemetrics, optionally filtered by name */
     searchOnline: function (client, guildId, rustplus, query, limit = 100) {
-        if (!bmEnabled()) throw new ApiError(409, 'Battlemetrics is disabled (no RPP_BATTLEMETRICS_TOKEN)');
-        const { bmId, bm } = getBm(client, guildId, rustplus);
-        if (!bmId) throw new ApiError(409, 'The server has no Battlemetrics id');
-        if (!bm || !bm.lastUpdateSuccessful) throw new ApiError(503, 'Battlemetrics data is not available yet');
-
-        const instance = client.getInstance(guildId);
-        const trackedBy = new Object();
-        for (const [trackerId, tracker] of Object.entries(instance.trackers || {})) {
-            for (const p of tracker.players) {
-                if (!p.playerId) continue;
-                if (!trackedBy[p.playerId]) trackedBy[p.playerId] = [];
-                trackedBy[p.playerId].push(`${trackerId}`);
-            }
-        }
+        const { bmId, bm } = currentBmOrThrow(client, guildId, rustplus);
+        const trackedBy = trackedIndex(client.getInstance(guildId)).byPlayer;
 
         const q = (query || '').trim().toLowerCase();
         const players = bm.getOnlinePlayerIdsOrderedByTime()
             .map(id => bm.players[id])
             .filter(p => p && (!q || `${p.name}`.toLowerCase().includes(q) || `${p.id}` === q))
             .slice(0, limit)
-            .map(p => ({
-                playerId: `${p.id}`,
-                name: p.name,
-                onlineSeconds: secondsOf(bm.getOnlineTime(p.id)),
-                firstTime: p.firstTime === true,
-                battlemetricsUrl: `${Constants.BATTLEMETRICS_PROFILE_URL}${p.id}`,
-                trackedBy: trackedBy[p.id] || []
-            }));
+            .map(p => onlinePlayer(bm, p, trackedBy));
 
         return {
             battlemetricsId: bmId,
@@ -153,6 +173,65 @@ module.exports = {
             streamerMode: bm.streamerMode,
             total: bm.onlinePlayers.length,
             players: players
+        };
+    },
+
+    /**
+     *  Friends of a Steam profile that are on the server right now. Battlemetrics only knows in-game names, so
+     *  friends are matched by name: every online player whose name is at least `minScore` alike (0.5..1) is a
+     *  candidate, best first. Friends that Steam shows playing Rust without a match are listed separately.
+     */
+    steamFriendsOnServer: async function (client, guildId, rustplus, body) {
+        const { bmId, bm } = currentBmOrThrow(client, guildId, rustplus);
+        const minScore = Math.min(Math.max(Number(body.minScore) || 0.8, 0.5), 1);
+
+        const data = await SteamFriends.getFriends(body.profile, body.steamApiKey || null);
+        if (data.error) throw new ApiError(...STEAM_ERRORS[data.error]);
+
+        const tracked = trackedIndex(client.getInstance(guildId));
+        const online = bm.getOnlinePlayerIdsOrderedByTime().map(id => bm.players[id]).filter(p => p)
+            .map(p => ({ p: p, prepared: SteamFriends.prepareName(p.name) }));
+
+        const onServer = [], playingRustElsewhere = [];
+        for (let i = 0; i < data.friends.length; i++) {
+            /* Large friend lists take a moment; let the bot breathe in between */
+            if (i > 0 && i % 100 === 0) await new Promise(resolve => setImmediate(resolve));
+            const friend = data.friends[i];
+            const prepared = SteamFriends.prepareName(friend.name);
+            const candidates = [];
+            for (const o of online) {
+                const score = SteamFriends.similarityOf(prepared, o.prepared, minScore);
+                if (score > 0) candidates.push(Object.assign({ score: Math.round(score * 100) / 100 }, onlinePlayer(bm, o.p, tracked.byPlayer)));
+            }
+            const entry = Object.assign({}, friend, {
+                playingRust: friend.game === SteamFriends.RUST_GAME_NAME,
+                profileUrl: `${Constants.STEAM_PROFILES_URL}${friend.steamId}`,
+                trackedBy: tracked.bySteam[friend.steamId] || []
+            });
+            if (candidates.length > 0) {
+                candidates.sort((a, b) => b.score - a.score);
+                onServer.push(Object.assign(entry, { candidates: candidates.slice(0, 8) }));
+            }
+            else if (entry.playingRust) {
+                playingRustElsewhere.push(entry);
+            }
+        }
+        /* Best matches first; among equal ones the unambiguous, then those Steam shows playing Rust */
+        onServer.sort((a, b) => b.candidates[0].score - a.candidates[0].score || a.candidates.length - b.candidates.length ||
+            (b.playingRust ? 1 : 0) - (a.playingRust ? 1 : 0));
+
+        return {
+            profile: data.profile,
+            source: data.source,
+            private: data.private,
+            friendCount: data.friends.length,
+            fetchedAt: data.fetchedAt,
+            battlemetricsId: bmId,
+            streamerMode: bm.streamerMode,
+            onlineCount: online.length,
+            minScore: minScore,
+            onServer: onServer,
+            playingRustElsewhere: playingRustElsewhere
         };
     },
 
@@ -200,10 +279,14 @@ module.exports = {
 
         const id = `${body.steamId || body.playerId || ''}`.trim();
         if (!/^\d+$/.test(id)) throw new ApiError(400, 'steamId or playerId (digits) required');
+        /* Both known (a Steam friend matched to a player on the server): keep both */
+        const both = body.steamId && body.playerId && /^\d+$/.test(`${body.playerId}`) &&
+            `${body.steamId}`.length === Constants.STEAMID64_LENGTH ? { steamId: `${body.steamId}`, playerId: `${body.playerId}` } : null;
 
         const isSteamId64 = id.length === Constants.STEAMID64_LENGTH;
         if ((isSteamId64 && tracker.players.some(e => e.steamId === id)) ||
-            (!isSteamId64 && tracker.players.some(e => e.playerId === id))) {
+            (!isSteamId64 && tracker.players.some(e => e.playerId === id)) ||
+            (both && tracker.players.some(e => e.playerId === both.playerId))) {
             return serializeTracker(client, trackerId, tracker);
         }
 
@@ -213,7 +296,12 @@ module.exports = {
         const knownName = playerId => [bm, currentBm].map(b => (b && b.players.hasOwnProperty(playerId) ? b.players[playerId]['name'] : null))
             .find(n => n) || null;
         let name = null, steamId = null, playerId = null;
-        if (isSteamId64) {
+        if (both) {
+            steamId = both.steamId;
+            playerId = both.playerId;
+            name = knownName(playerId) || (body.name ? `${body.name}`.slice(0, 64) : '-');
+        }
+        else if (isSteamId64) {
             steamId = id;
             name = await Scrape.scrapeSteamProfileName(client, id);
             for (const b of [bm, currentBm]) {
