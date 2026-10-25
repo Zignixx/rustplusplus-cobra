@@ -303,7 +303,7 @@ module.exports = {
         }
         else if (isSteamId64) {
             steamId = id;
-            name = await Scrape.scrapeSteamProfileName(client, id);
+            name = await Scrape.scrapeSteamProfileName(client, id) || (body.name ? `${body.name}`.slice(0, 64) : null);
             for (const b of [bm, currentBm]) {
                 if (!name || !b || playerId) continue;
                 playerId = Object.keys(b.players).find(e => b.players[e]['name'] === name) || null;
