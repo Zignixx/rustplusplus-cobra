@@ -186,6 +186,112 @@ async function getFriends(input, apiKey = null) {
     return data;
 }
 
+const STATUS_CACHE_MS = 60 * 1000;
+const statusCache = new Map();
+/* Steam persona states: 0 offline, 1 online, 2 busy, 3 away, 4 snooze, 5 looking to trade, 6 looking to play */
+const PERSONA_STATES = ['offline', 'online', 'online', 'away', 'away', 'online', 'online'];
+
+function xmlTag(xml, tag) {
+    const m = xml.match(new RegExp(`<${tag}>(?:<!\\[CDATA\\[)?([\\s\\S]*?)(?:\\]\\]>)?</${tag}>`));
+    return m ? m[1].trim() : null;
+}
+
+/* Online state of one profile from its public XML (no API key needed) */
+async function statusFromXml(url) {
+    let response;
+    try {
+        response = await Axios.get(`${url}?xml=1`, { timeout: 15000, responseType: 'text' });
+    }
+    catch (e) {
+        return { error: 'unreachable' };
+    }
+    const xml = `${response.data || ''}`;
+    if (xmlTag(xml, 'error')) return { error: 'notFound' };
+    const steamId = xmlTag(xml, 'steamID64');
+    if (!steamId) return { error: 'unreachable' };
+    const online = xmlTag(xml, 'onlineState') || 'offline';
+    const game = xmlTag(xml, 'gameName');
+    const state = online === 'in-game' ? 'in-game' : online === 'online' ? 'online' : 'offline';
+    return {
+        steamId: steamId,
+        name: Utils.decodeHtml(xmlTag(xml, 'steamID') || ''),
+        avatar: xmlTag(xml, 'avatarMedium'),
+        state: /away|snooze/i.test(xmlTag(xml, 'stateMessage') || '') && state === 'online' ? 'away' : state,
+        game: game ? Utils.decodeHtml(game) : null,
+        private: xmlTag(xml, 'privacyState') !== 'public'
+    };
+}
+
+/**
+ *  Online state of several Steam profiles (links, SteamID64s or custom URL names): offline, online, away or
+ *  in-game with the game. One API call for all with a key, one public profile request each without. Results
+ *  are cached for a minute.
+ */
+async function getStatuses(inputs, apiKey = null) {
+    const key = apiKey && /^[A-Fa-f0-9]{32}$/.test(`${apiKey}`.trim()) ? `${apiKey}`.trim() : null;
+    if (apiKey && !key) return { error: 'badKey' };
+
+    const results = inputs.map(input => ({ input: `${input}`, url: profileUrl(input) }));
+    const now = Date.now();
+    const pending = results.filter(r => {
+        if (!r.url) { r.status = { error: 'invalid' }; return false; }
+        const cached = statusCache.get(r.url);
+        if (cached && now - cached.at < STATUS_CACHE_MS) { r.status = cached.data; return false; }
+        return true;
+    });
+
+    if (key && pending.length > 0) {
+        const get = (path, params) => Axios.get(`${STEAM_API}${path}`, { params: Object.assign({ key: key }, params), timeout: 15000 });
+        try {
+            for (const r of pending) {
+                r.steamId = (r.url.match(/\/profiles\/(\d{17})$/) || [])[1];
+                if (r.steamId) continue;
+                const res = await get('/ISteamUser/ResolveVanityURL/v1/', { vanityurl: decodeURIComponent(r.url.split('/id/')[1]) });
+                if (res.data && res.data.response && res.data.response.success === 1) r.steamId = res.data.response.steamid;
+                else r.status = { error: 'notFound' };
+            }
+            const ids = pending.filter(r => r.steamId).map(r => r.steamId);
+            const summaries = new Object();
+            for (let i = 0; i < ids.length; i += 100) {
+                const res = await get('/ISteamUser/GetPlayerSummaries/v2/', { steamids: ids.slice(i, i + 100).join(',') });
+                for (const p of (res.data && res.data.response && res.data.response.players) || []) summaries[p.steamid] = p;
+            }
+            for (const r of pending) {
+                if (!r.steamId) continue;
+                const p = summaries[r.steamId];
+                if (!p) { r.status = { error: 'notFound' }; continue; }
+                r.status = {
+                    steamId: p.steamid,
+                    name: p.personaname || '',
+                    avatar: p.avatarmedium || null,
+                    state: p.gameid ? 'in-game' : (PERSONA_STATES[p.personastate] || 'offline'),
+                    game: p.gameid === RUST_APP_ID ? RUST_GAME_NAME : (p.gameextrainfo || null),
+                    private: p.communityvisibilitystate !== 3,
+                    lastLogoff: p.lastlogoff ? p.lastlogoff * 1000 : null
+                };
+            }
+        }
+        catch (e) {
+            if (e.response && e.response.status === 403) return { error: 'badKey' };
+            for (const r of pending) if (!r.status) r.status = { error: 'unreachable' };
+        }
+    }
+    else {
+        for (const r of pending) r.status = await statusFromXml(r.url);
+    }
+
+    for (const r of pending) if (r.status && !r.status.error) statusCache.set(r.url, { at: now, data: r.status });
+    if (statusCache.size > 500) statusCache.clear();
+
+    return {
+        source: key ? 'api' : 'page',
+        players: results.map(r => Object.assign({ input: r.input }, r.status, r.status && r.status.steamId ? {
+            playingRust: r.status.state === 'in-game' && r.status.game === RUST_GAME_NAME,
+            profileUrl: `https://steamcommunity.com/profiles/${r.status.steamId}`
+        } : {}))
+    };
+}
+
 /* Names compared case-insensitively, also without invisible characters and extra spaces. */
 function normName(name) {
     return `${name || ''}`.normalize('NFKC').toLowerCase().replace(/[​-‍﻿]/g, '')
@@ -264,6 +370,7 @@ module.exports = {
     profileUrl: profileUrl,
     parseFriendsPage: parseFriendsPage,
     getFriends: getFriends,
+    getStatuses: getStatuses,
     normName: normName,
     coreName: coreName,
     similarity: similarity,

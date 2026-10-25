@@ -25,11 +25,13 @@ const ApiEvents = require('./apiEvents.js');
 const Config = require('../../config');
 const Snapshot = require('./snapshot.js');
 const Trackers = require('./trackers.js');
+const SteamFriends = require('./steamFriends.js');
 
 const API_PREFIX = '/api/v1';
 const STREAM_HEARTBEAT_MS = 20 * 1000;
 const MIN_TOKEN_LENGTH = 16;
 const MAX_BODY_BYTES = 16 * 1024;
+const MAX_STEAM_PROFILES = 50;
 
 /* HTTP API for dashboards (e.g. the Corsair Xenon Edge widget).
  *
@@ -49,6 +51,8 @@ const MAX_BODY_BYTES = 16 * 1024;
  *  DELETE /api/v1/trackers/:id
  *  POST   /api/v1/trackers/:id/players   {playerId} or {steamId} (or both)
  *  DELETE /api/v1/trackers/:id/players/:playerIdOrSteamId
+ *
+ *  POST   /api/v1/steam/status       {profiles: [...], steamApiKey?} -> Steam online state (offline/online/away/in-game)
  *
  *  Authentication: `Authorization: Bearer <RPP_API_TOKEN>` (or `?token=` for clients that can't set headers).
  *  Without `guild`, the first connected instance is used.
@@ -138,6 +142,9 @@ class ApiServer {
             return this.sendJson(res, 401, { error: 'Invalid or missing token' });
         }
 
+        if (path === `${API_PREFIX}/steam/status` && req.method === 'POST') {
+            return this.handleSteamStatus(req, res);
+        }
         if (path === `${API_PREFIX}/trackers` || path.startsWith(`${API_PREFIX}/trackers/`) ||
             path === `${API_PREFIX}/battlemetrics/online` || path === `${API_PREFIX}/battlemetrics/steam-friends`) {
             return this.handleTrackers(req, res, url, path);
@@ -228,6 +235,16 @@ class ApiServer {
             'ETag': etag
         });
         return res.end(buffer);
+    }
+
+    /* Steam online state of a watch list; works without a Rust server. POST, so the API key stays out of urls. */
+    async handleSteamStatus(req, res) {
+        const body = await this.readJson(req);
+        const profiles = Array.isArray(body.profiles) ? body.profiles.slice(0, MAX_STEAM_PROFILES) : [];
+        if (profiles.length === 0) return this.sendJson(res, 400, { error: 'profiles (array) required' });
+        const result = await SteamFriends.getStatuses(profiles, body.steamApiKey || null);
+        if (result.error === 'badKey') return this.sendJson(res, 400, { error: 'Steam rejected the API key' });
+        return this.sendJson(res, 200, result);
     }
 
     async handleTrackers(req, res, url, path) {
