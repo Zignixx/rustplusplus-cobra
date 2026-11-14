@@ -420,7 +420,7 @@ class ApiServer {
             const members = team && team.teamInfo ? team.teamInfo.members : null;
             if (!Array.isArray(markerList) || !Array.isArray(members)) continue;
 
-            const live = { at: Date.now(), players: new Map(), markers: new Map() };
+            const live = { at: Date.now(), serverId: rustplus.serverId, players: new Map(), markers: new Map() };
             for (const m of markerList) {
                 live.markers.set(`${m.id}`, { x: m.x, y: m.y, rotation: m.rotation });
             }

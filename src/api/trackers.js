@@ -142,8 +142,8 @@ function onlinePlayer(bm, p, trackedBy) {
 function currentBmOrThrow(client, guildId, rustplus) {
     if (!bmEnabled()) throw new ApiError(409, 'Battlemetrics is disabled (no RPP_BATTLEMETRICS_TOKEN)');
     const { bmId, bm } = getBm(client, guildId, rustplus);
-    if (!bmId) throw new ApiError(409, 'The server has no Battlemetrics id');
-    if (!bm || !bm.lastUpdateSuccessful) throw new ApiError(503, 'Battlemetrics data is not available yet');
+    if (!bmId) throw new ApiError(409, 'Battlemetrics has not found this server yet (it is looked up by its name, a minute or two after connecting)');
+    if (!bm || !bm.lastUpdateSuccessful) throw new ApiError(503, 'Battlemetrics data for this server is not available yet');
     return { bmId, bm };
 }
 
@@ -191,6 +191,7 @@ module.exports = {
             .map(p => onlinePlayer(bm, p, trackedBy));
 
         return {
+            serverId: rustplus ? rustplus.serverId : null,
             battlemetricsId: bmId,
             updatedAt: bm.updatedAt,
             streamerMode: bm.streamerMode,
@@ -244,6 +245,7 @@ module.exports = {
             (b.playingRust ? 1 : 0) - (a.playingRust ? 1 : 0));
 
         return {
+            serverId: rustplus ? rustplus.serverId : null,
             profile: data.profile,
             source: data.source,
             private: data.private,
@@ -304,6 +306,7 @@ module.exports = {
             });
 
         return {
+            serverId: rustplus.serverId,
             available: !!(st && st.players),
             error: st ? st.error : (Config.api.serverQueryIntervalMs ? 'The first server query is still running' : 'The server query is turned off (RPP_SERVER_QUERY_INTERVAL=0)'),
             host: st ? st.host : null,

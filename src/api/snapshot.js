@@ -323,6 +323,8 @@ module.exports = {
         const instance = client.getInstance(rustplus.guildId);
         const server = instance && instance.serverList ? instance.serverList[rustplus.serverId] : null;
         const project = createProjector(rustplus);
+        /* Live positions belong to the server they were fetched from; after a server switch they are ignored */
+        if (live && live.serverId !== rustplus.serverId) live = null;
 
         return {
             generatedAt: new Date().toISOString(),
