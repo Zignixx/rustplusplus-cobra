@@ -41,7 +41,8 @@ const MAX_STEAM_PROFILES = 50;
  *  GET /api/v1/state?guild=ID         -> full state snapshot (see snapshot.js)
  *  GET /api/v1/events?guild=ID&limit= -> recent notifications, newest first
  *  GET /api/v1/map.jpg?guild=ID       -> map image of the connected server
- *  GET /api/v1/stream?guild=ID        -> Server-Sent Events: `state` after every poll, `notification` per event
+ *  GET /api/v1/stream?guild=ID        -> Server-Sent Events: `state` after every poll, `notification` per event,
+ *                                        `status` {server: false} at the start while no Rust server is connected
  *
  *  Battlemetrics trackers (the same as the tracker messages in Discord, changes show up there too):
  *  GET    /api/v1/trackers                              -> trackers with every player's online status
@@ -362,6 +363,11 @@ class ApiServer {
         const rustplus = this.getRustplus(stream.guildId);
         if (rustplus) {
             this.writeStream(stream, 'state', Snapshot.build(this.client, rustplus, this.live[rustplus.guildId] || null));
+        }
+        else {
+            /* The bot runs but is not connected to a Rust server (none paired yet, or not selected): say so, the
+               first `state` follows as soon as a server is connected. */
+            this.writeStream(stream, 'status', { server: false, reason: 'No Rust server connected' });
         }
         this.startLivePoll();
     }
