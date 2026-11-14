@@ -63,7 +63,9 @@ class ServerQuery {
         const list = [];
         const add = (host, port) => {
             port = parseInt(port);
-            if (host && port > 0 && port < 65536 && !list.some(c => c.host === host && c.port === port)) list.push({ host, port });
+            /* Servers paired through the Rust+ relay (since Nov 2026) have no address of their own ("relay") */
+            if (!host || host === 'relay' || !(port > 0 && port < 65536)) return;
+            if (!list.some(c => c.host === host && c.port === port)) list.push({ host, port });
         };
         if (server.queryPort) add(server.serverIp, server.queryPort);
         const bm = server.battlemetricsId ? this.client.battlemetricsInstances[server.battlemetricsId] : null;
@@ -71,7 +73,7 @@ class ServerQuery {
             add(server.serverIp, bm.server_portQuery);
             if (bm.server_ip) add(bm.server_ip, bm.server_portQuery);
         }
-        const appPort = parseInt(server.appPort);
+        const appPort = server.serverIp === 'relay' ? NaN : parseInt(server.appPort);
         if (appPort > APP_PORT_OFFSET) {
             const game = appPort - APP_PORT_OFFSET;
             add(server.serverIp, game);
