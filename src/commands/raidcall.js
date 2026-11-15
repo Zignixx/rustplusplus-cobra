@@ -36,17 +36,17 @@ module.exports = {
                 .setDescription('Show whether raid calls are on and who gets called.'))
             .addSubcommand(subcommand => subcommand
                 .setName('add')
-                .setDescription('Add someone to call: Telegram @username or phone number with country code.')
+                .setDescription('Add someone to call: phone number (+49..., phone call via Twilio) or Telegram @username.')
                 .addStringOption(option => option
-                    .setName('telegram')
-                    .setDescription('@username or +49... (they have to send /start to @CallMeBot_txtbot once)')
+                    .setName('receiver')
+                    .setDescription('+49... for a phone call, or a Telegram @username (CallMeBot)')
                     .setRequired(true)))
             .addSubcommand(subcommand => subcommand
                 .setName('remove')
                 .setDescription('Remove someone added with /raidcall add.')
                 .addStringOption(option => option
-                    .setName('telegram')
-                    .setDescription('@username or phone number')
+                    .setName('receiver')
+                    .setDescription('Phone number or Telegram @username')
                     .setRequired(true)))
             .addSubcommand(subcommand => subcommand
                 .setName('on')
@@ -74,19 +74,20 @@ module.exports = {
 
         switch (sub) {
             case 'add': {
-                const added = RaidCall.addReceiver(guildId, interaction.options.getString('telegram'));
+                const added = RaidCall.addReceiver(guildId, interaction.options.getString('receiver'));
                 if (!added) {
-                    await reply('That is neither a Telegram username (@name, 5-32 letters, digits or _) nor a ' +
-                        'phone number with country code (+49...).', true);
+                    await reply('That is neither a phone number with country code (+49...) nor a Telegram ' +
+                        'username (@name, 5-32 letters, digits or _).', true);
                     break;
                 }
                 client.log('Raid call', `Receiver ${added} added for guild ${guildId}.`);
-                await reply(`**${added}** gets raid calls now. They have to send /start to @CallMeBot_txtbot in ` +
-                    'Telegram once. Try it with /raidcall test or !raidtest in-game.');
+                const how = added.startsWith('+') && RaidCall.twilioReady ? 'a phone call (Twilio)' :
+                    'a Telegram call (CallMeBot: send /start to @CallMeBot_txtbot once)';
+                await reply(`**${added}** gets raid calls now, as ${how}. Try it with /raidcall test or !raidtest in-game.`);
             } break;
 
             case 'remove': {
-                const input = interaction.options.getString('telegram');
+                const input = interaction.options.getString('receiver');
                 if (RaidCall.removeReceiver(guildId, input)) {
                     client.log('Raid call', `Receiver ${input} removed for guild ${guildId}.`);
                     await reply(`**${input}** gets no raid calls anymore.`);
@@ -117,6 +118,7 @@ module.exports = {
                 const alarms = Config.raidCall.alarms.length ? Config.raidCall.alarms.join(', ') : 'every Smart Alarm';
                 await reply(`Raid calls are **${RaidCall.isEnabled(guildId) ? 'on' : 'off'}**.\n` +
                     `Calls: ${receivers.length ? receivers.join(', ') : 'nobody yet (add with /raidcall add)'}\n` +
+                    `Phone calls (Twilio): ${RaidCall.twilioReady ? `on, from ${Config.raidCall.twilio.from}` : 'not set up'}\n` +
                     `Alarms: ${alarms}\n` +
                     `Cooldown: ${Config.raidCall.cooldownSeconds} s · Voice: ${Config.raidCall.lang}`);
             } break;

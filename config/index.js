@@ -64,6 +64,17 @@ module.exports = {
         cooldownSeconds: parseInt(process.env.RPP_RAID_CALL_COOLDOWN) >= 0 ? parseInt(process.env.RPP_RAID_CALL_COOLDOWN) : 180,
         /* Voice of the spoken text (Google TTS voice name) and how often it is repeated in the call */
         lang: process.env.RPP_RAID_CALL_LANG || 'de-DE-Standard-A',
-        repeat: Math.min(Math.max(parseInt(process.env.RPP_RAID_CALL_REPEAT) || 2, 1), 5)
+        repeat: Math.min(Math.max(parseInt(process.env.RPP_RAID_CALL_REPEAT) || 2, 1), 5),
+        /* Real phone calls through Twilio for receivers that are phone numbers (+49...). Without these, phone
+           numbers are called through CallMeBot (Telegram) like usernames. */
+        twilio: {
+            accountSid: (process.env.RPP_TWILIO_ACCOUNT_SID || '').trim(),
+            authToken: (process.env.RPP_TWILIO_AUTH_TOKEN || '').trim(),
+            /* The Twilio number that calls, in international format (+1..., +49...) */
+            from: (process.env.RPP_TWILIO_FROM || '').trim(),
+            /* Voice and language of the spoken text (Twilio <Say>) */
+            voice: process.env.RPP_TWILIO_VOICE || 'Polly.Vicki',
+            language: process.env.RPP_TWILIO_LANGUAGE || 'de-DE'
+        }
     }
 };

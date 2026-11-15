@@ -26,6 +26,17 @@ const Config = require('../../config');
 /* CallMeBot places a real Telegram voice call that reads the text aloud: https://www.callmebot.com
    Each receiver has to allow it once by sending /start to @CallMeBot_txtbot in Telegram. */
 const CALLMEBOT_URL = 'https://api.callmebot.com/start.php';
+/* Twilio places a real phone call that reads the text aloud: https://www.twilio.com/docs/voice/api/call-resource */
+const TWILIO_API = 'https://api.twilio.com/2010-04-01';
+
+function twilioConfigured() {
+    const t = Config.raidCall.twilio;
+    return !!(t.accountSid && t.authToken && t.from);
+}
+
+function escapeXml(text) {
+    return `${text}`.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
 
 const TEST_COOLDOWN_MS = 60 * 1000;
 
@@ -88,8 +99,9 @@ class RaidCall {
         this.client = client;
         if (this.started) return;
         this.started = true;
+        if (twilioConfigured()) client.log('Raid call', `Phone calls through Twilio from ${Config.raidCall.twilio.from}.`);
         if (Config.raidCall.telegram.length) {
-            client.log('Raid call', `Telegram raid calls for ${Config.raidCall.telegram.join(', ')}` +
+            client.log('Raid call', `Raid calls for ${Config.raidCall.telegram.join(', ')}` +
                 (Config.raidCall.alarms.length ? ` (alarms: ${Config.raidCall.alarms.join(', ')})` : ' (all Smart Alarms)'));
         }
         /* Always listen: receivers can also be added later with /raidcall add */
@@ -97,6 +109,11 @@ class RaidCall {
             if (event.type !== 'alarm') return;
             this.onAlarm(event).catch(e => client.log('Raid call', `Failed: ${e && e.message ? e.message : e}`, 'error'));
         });
+    }
+
+    /** Twilio is set up: phone numbers get real phone calls */
+    get twilioReady() {
+        return twilioConfigured();
     }
 
     isEnabled(guildId) {
@@ -152,10 +169,17 @@ class RaidCall {
         return this.call(guildId, `Raid Alarm Test${by ? ` von ${by}` : ''}. Wenn du das hörst, funktioniert der Anruf.`);
     }
 
-    /** Calls every receiver of the Discord server; returns one line per receiver for logs and replies */
+    /**
+     *  Calls every receiver of the Discord server: phone numbers through Twilio when it is set up, everything
+     *  else through CallMeBot (Telegram). Returns one line per receiver for logs and replies.
+     */
     async call(guildId, text) {
         const results = [];
         for (const user of this.receivers(guildId)) {
+            if (user.startsWith('+') && twilioConfigured()) {
+                results.push(`${user} (phone): ${await this.twilioCall(user, text)}`);
+                continue;
+            }
             try {
                 const response = await Axios.get(CALLMEBOT_URL, {
                     params: {
@@ -180,6 +204,28 @@ class RaidCall {
         }
         for (const line of results) this.client.log('Raid call', line);
         return results;
+    }
+
+    /* A phone call that says the text a few times; the person can hang up any time */
+    async twilioCall(to, text) {
+        const t = Config.raidCall.twilio;
+        const say = `<Say voice="${escapeXml(t.voice)}" language="${escapeXml(t.language)}">${escapeXml(text)}</Say>`;
+        const twiml = `<Response>${say}<Pause length="1"/>`.concat(
+            Array(Math.max(Config.raidCall.repeat - 1, 0)).fill(`${say}<Pause length="1"/>`).join(''), '</Response>');
+        try {
+            const response = await Axios.post(`${TWILIO_API}/Accounts/${encodeURIComponent(t.accountSid)}/Calls.json`,
+                new URLSearchParams({ To: to, From: t.from, Twiml: twiml, Timeout: '45' }).toString(), {
+                    auth: { username: t.accountSid, password: t.authToken },
+                    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                    timeout: 30000
+                });
+            return `call started (${response.data && response.data.status ? response.data.status : 'queued'})`;
+        }
+        catch (e) {
+            const data = e.response && e.response.data ? e.response.data : null;
+            /* Twilio explains what is wrong, e.g. an unverified number on a trial account */
+            return `failed (${data && data.message ? data.message : (e.response ? `HTTP ${e.response.status}` : e.message)})`;
+        }
     }
 }
 

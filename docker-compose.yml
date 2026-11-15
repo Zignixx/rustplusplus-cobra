@@ -23,6 +23,10 @@ services:
             # /raidcall add, or here (@username or +phone, comma separated). Every receiver sends /start to
             # @CallMeBot_txtbot in Telegram once. Test with /raidcall test or !raidtest in-game.
             # - RPP_RAID_CALL_TELEGRAM=@yourname
+            # Optional: real phone calls through Twilio for receivers that are phone numbers (+49...), see docs/raid_call.md
+            # - RPP_TWILIO_ACCOUNT_SID=ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+            # - RPP_TWILIO_AUTH_TOKEN=your_auth_token
+            # - RPP_TWILIO_FROM=+1xxxxxxxxxx
             # Optional: only alarms whose name contains one of these words (default: every Smart Alarm)
             # - RPP_RAID_CALL_ALARMS=raid,base
             # - RPP_RAID_CALL_COOLDOWN=180
