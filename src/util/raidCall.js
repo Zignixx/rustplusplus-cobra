@@ -63,8 +63,10 @@ class RaidCall {
         const receiver = normaliseReceiver(input);
         if (!receiver) return null;
         const instance = this.client.getInstance(guildId);
-        const list = Array.isArray(instance.raidCallTelegram) ? instance.raidCallTelegram : [];
-        if (!list.some(r => r.toLowerCase() === receiver.toLowerCase())) list.push(receiver);
+        /* Adding a name again with other capitals replaces it (CallMeBot may compare the exact spelling) */
+        const list = (Array.isArray(instance.raidCallTelegram) ? instance.raidCallTelegram : [])
+            .filter(r => r.toLowerCase() !== receiver.toLowerCase());
+        list.push(receiver);
         instance.raidCallTelegram = list;
         this.client.setInstance(guildId, instance);
         return receiver;
@@ -165,8 +167,10 @@ class RaidCall {
                     timeout: 30000,
                     responseType: 'text'
                 });
-                /* CallMeBot answers with a small HTML page; keep its text for the log */
-                const answer = `${response.data || ''}`.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 200);
+                /* CallMeBot answers with an HTML page; keep its visible text (without scripts) for the log */
+                const answer = `${response.data || ''}`
+                    .replace(/<(script|style)[^>]*>[\s\S]*?<\/\1>/gi, ' ')
+                    .replace(/<[^>]*>/g, ' ').replace(/&nbsp;/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 600);
                 results.push(`${user}: ${answer || `HTTP ${response.status}`}`);
             }
             catch (e) {
