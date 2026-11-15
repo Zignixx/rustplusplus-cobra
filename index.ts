@@ -41,6 +41,7 @@ const client = new DiscordBot({
 client.build();
 
 require('./src/api/ApiServer').start(client);
+require('./src/util/raidCall').start(client);
 
 function createMissingDirectories() {
     if (!Fs.existsSync(Path.join(__dirname, 'logs'))) {

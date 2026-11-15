@@ -486,6 +486,7 @@ async function alarmAlarm(client, guild, title, message, body) {
         server.alarms[entityId].lastTrigger = Math.floor(new Date() / 1000);
         client.setInstance(guild.id, instance);
         await DiscordMessages.sendSmartAlarmTriggerMessage(guild.id, serverId, entityId);
+        ApiEvents.publish(guild.id, 'alarm', { entityId: `${entityId}`, name: server.alarms[entityId].name, text: message });
         client.log(client.intlGet(null, 'infoCap'), `${title}: ${message}`);
     }
 }

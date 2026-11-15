@@ -53,5 +53,17 @@ module.exports = {
     },
     battlemetrics: {
         token: cleanToken(process.env.RPP_BATTLEMETRICS_TOKEN)
+    },
+    raidCall: {
+        /* Telegram call (CallMeBot) when a Smart Alarm goes off: Telegram usernames (@name) or phone numbers
+           (+49...), comma separated. Empty = off. */
+        telegram: (process.env.RPP_RAID_CALL_TELEGRAM || '').split(',').map(e => e.trim()).filter(e => e.length > 0),
+        /* Only alarms whose name contains one of these words (comma separated); empty = every Smart Alarm */
+        alarms: (process.env.RPP_RAID_CALL_ALARMS || '').split(',').map(e => e.trim()).filter(e => e.length > 0),
+        /* No new call within this many seconds after the last one */
+        cooldownSeconds: parseInt(process.env.RPP_RAID_CALL_COOLDOWN) >= 0 ? parseInt(process.env.RPP_RAID_CALL_COOLDOWN) : 180,
+        /* Voice of the spoken text (Google TTS voice name) and how often it is repeated in the call */
+        lang: process.env.RPP_RAID_CALL_LANG || 'de-DE-Standard-A',
+        repeat: Math.min(Math.max(parseInt(process.env.RPP_RAID_CALL_REPEAT) || 2, 1), 5)
     }
 };
