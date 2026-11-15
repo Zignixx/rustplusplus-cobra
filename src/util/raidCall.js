@@ -27,29 +27,70 @@ const Config = require('../../config');
    Each receiver has to allow it once by sending /start to @CallMeBot_txtbot in Telegram. */
 const CALLMEBOT_URL = 'https://api.callmebot.com/start.php';
 
+const TEST_COOLDOWN_MS = 60 * 1000;
+
+/* A Telegram username (@name, 5-32 letters, digits or _) or a phone number with country code (+49...) */
+function normaliseReceiver(input) {
+    let s = `${input || ''}`.trim().replace(/\s+/g, '');
+    if (/^\+\d{6,15}$/.test(s)) return s;
+    if (/^00\d{6,15}$/.test(s)) return `+${s.slice(2)}`;
+    if (!s.startsWith('@')) s = `@${s}`;
+    return /^@[A-Za-z0-9_]{5,32}$/.test(s) ? s : null;
+}
+
 /**
- *  Raid call: when a Smart Alarm goes off (or the raid alarm plugin fires), call the configured people on
- *  Telegram. Discord bots cannot call users, so this goes through CallMeBot. Configured with RPP_RAID_CALL_*;
- *  /raidcall turns it on/off per Discord server and places a test call.
+ *  Raid call: when a Smart Alarm goes off (or the raid alarm plugin fires), call people on Telegram. Discord
+ *  bots cannot call users, so this goes through CallMeBot. Receivers come from RPP_RAID_CALL_TELEGRAM and from
+ *  /raidcall add (per Discord server); /raidcall turns it on/off and !raidtest in-game places a test call.
  */
 class RaidCall {
     constructor() {
         this.client = null;
         this.lastCall = new Object();
+        this.lastTest = new Object();
         this.started = false;
     }
 
-    get configured() {
-        return Config.raidCall.telegram.length > 0;
+    /** Everyone to call for a Discord server: RPP_RAID_CALL_TELEGRAM plus the ones added with /raidcall add */
+    receivers(guildId) {
+        const instance = this.client && guildId ? this.client.getInstance(guildId) : null;
+        const added = instance && Array.isArray(instance.raidCallTelegram) ? instance.raidCallTelegram : [];
+        return [...new Set([...Config.raidCall.telegram, ...added])];
+    }
+
+    /** Adds a receiver for a Discord server; returns the stored form, or null when the input is not valid */
+    addReceiver(guildId, input) {
+        const receiver = normaliseReceiver(input);
+        if (!receiver) return null;
+        const instance = this.client.getInstance(guildId);
+        const list = Array.isArray(instance.raidCallTelegram) ? instance.raidCallTelegram : [];
+        if (!list.some(r => r.toLowerCase() === receiver.toLowerCase())) list.push(receiver);
+        instance.raidCallTelegram = list;
+        this.client.setInstance(guildId, instance);
+        return receiver;
+    }
+
+    /** Removes a receiver added with /raidcall add; false when it is not in that list */
+    removeReceiver(guildId, input) {
+        const receiver = normaliseReceiver(input) || `${input || ''}`.trim();
+        const instance = this.client.getInstance(guildId);
+        const list = Array.isArray(instance.raidCallTelegram) ? instance.raidCallTelegram : [];
+        const kept = list.filter(r => r.toLowerCase() !== receiver.toLowerCase());
+        if (kept.length === list.length) return false;
+        instance.raidCallTelegram = kept;
+        this.client.setInstance(guildId, instance);
+        return true;
     }
 
     start(client) {
         this.client = client;
         if (this.started) return;
         this.started = true;
-        if (!this.configured) return;
-        client.log('Raid call', `Telegram raid calls are on for ${Config.raidCall.telegram.join(', ')}` +
-            (Config.raidCall.alarms.length ? ` (alarms: ${Config.raidCall.alarms.join(', ')})` : ' (all Smart Alarms)'));
+        if (Config.raidCall.telegram.length) {
+            client.log('Raid call', `Telegram raid calls for ${Config.raidCall.telegram.join(', ')}` +
+                (Config.raidCall.alarms.length ? ` (alarms: ${Config.raidCall.alarms.join(', ')})` : ' (all Smart Alarms)'));
+        }
+        /* Always listen: receivers can also be added later with /raidcall add */
         ApiEvents.on('event', (event) => {
             if (event.type !== 'alarm') return;
             this.onAlarm(event).catch(e => client.log('Raid call', `Failed: ${e && e.message ? e.message : e}`, 'error'));
@@ -76,7 +117,7 @@ class RaidCall {
 
     async onAlarm(event) {
         const guildId = event.guildId;
-        if (!this.isEnabled(guildId) || !this.matches(event.name)) return;
+        if (this.receivers(guildId).length === 0 || !this.isEnabled(guildId) || !this.matches(event.name)) return;
 
         /* One call per cooldown: alarms often fire several times in a row during a raid */
         const now = Date.now();
@@ -92,13 +133,27 @@ class RaidCall {
         const text = sentence(`Raid Alarm! ${event.name || 'Smart Alarm'}` +
             (event.text && event.text !== event.name ? `: ${event.text}` : '')) +
             (server ? ` Server ${server}.` : '');
-        await this.call(text);
+        await this.call(guildId, text);
     }
 
-    /** Calls everyone in RPP_RAID_CALL_TELEGRAM; returns one line per receiver for logs and /raidcall test */
-    async call(text) {
+    /**
+     *  Test call for /raidcall test and !raidtest: calls every receiver even while calls are off, at most once a
+     *  minute. Returns the result lines, or a reason string when nothing was called.
+     */
+    async test(guildId, by = null) {
+        if (this.receivers(guildId).length === 0) return 'No receivers yet: add one with /raidcall add in Discord.';
+        const now = Date.now();
+        if (this.lastTest[guildId] && now - this.lastTest[guildId] < TEST_COOLDOWN_MS) {
+            return `A test call was placed less than a minute ago, try again in ${Math.ceil((TEST_COOLDOWN_MS - (now - this.lastTest[guildId])) / 1000)} s.`;
+        }
+        this.lastTest[guildId] = now;
+        return this.call(guildId, `Raid Alarm Test${by ? ` von ${by}` : ''}. Wenn du das hörst, funktioniert der Anruf.`);
+    }
+
+    /** Calls every receiver of the Discord server; returns one line per receiver for logs and replies */
+    async call(guildId, text) {
         const results = [];
-        for (const user of Config.raidCall.telegram) {
+        for (const user of this.receivers(guildId)) {
             try {
                 const response = await Axios.get(CALLMEBOT_URL, {
                     params: {

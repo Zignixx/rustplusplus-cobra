@@ -21,6 +21,7 @@
 const SmartAlarmHandler = require('./smartAlarmHandler.js');
 const SmartSwitchGroupHandler = require('./smartSwitchGroupHandler.js');
 const SmartSwitchHandler = require('./smartSwitchHandler.js');
+const RaidCall = require('../util/raidCall.js');
 
 module.exports = {
     inGameCommandHandler: async function (rustplus, client, message) {
@@ -94,6 +95,12 @@ module.exports = {
         else if (commandLowerCase === `${prefix}${client.intlGet('en', 'commandSyntaxLarge')}` ||
             commandLowerCase === `${prefix}${client.intlGet(guildId, 'commandSyntaxLarge')}`) {
             rustplus.sendInGameMessage(rustplus.getCommandLarge());
+        }
+        else if (commandLowerCase === `${prefix}raidtest`) {
+            /* Test of the Telegram raid call (see /raidcall); answers in the team chat when the call is placed */
+            const result = await RaidCall.test(guildId, callerName);
+            rustplus.sendInGameMessage(typeof result === 'string' ? result :
+                `Raid call test: calling ${result.length} receiver${result.length === 1 ? '' : 's'} on Telegram.`);
         }
         else if (commandLowerCase.startsWith(`${prefix}${client.intlGet('en', 'commandSyntaxLeader')}`) ||
             commandLowerCase.startsWith(`${prefix}${client.intlGet(guildId, 'commandSyntaxLeader')}`)) {

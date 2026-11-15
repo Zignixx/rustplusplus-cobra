@@ -5,17 +5,18 @@ Discord bots cannot call people, so the bot calls you on **Telegram** instead wh
 ## Setup
 
 1. In Telegram, send `/start` to **@CallMeBot_txtbot** once (from every account that should be called). Without this CallMeBot is not allowed to call you.
-2. Set the receivers for the bot and restart it:
+2. Add the people to call in Discord, as many as you like: `/raidcall add telegram:@name` (or a phone number with country code, `+49…`). Alternatively set them for the bot with `RPP_RAID_CALL_TELEGRAM`; both lists are used.
+3. Optional settings for the bot:
 
    | Variable | Default | Meaning |
    | --- | --- | --- |
-   | `RPP_RAID_CALL_TELEGRAM` | *(empty = off)* | Telegram usernames (`@name`) or phone numbers (`+49…`), comma separated. |
+   | `RPP_RAID_CALL_TELEGRAM` | *(empty)* | Extra receivers for every Discord server: Telegram usernames (`@name`) or phone numbers (`+49…`), comma separated. |
    | `RPP_RAID_CALL_ALARMS` | *(empty)* | Only alarms whose name contains one of these words (comma separated, not case sensitive). Empty = every Smart Alarm. |
    | `RPP_RAID_CALL_COOLDOWN` | `180` | Seconds without a new call after one, since alarms often fire several times during a raid. |
    | `RPP_RAID_CALL_LANG` | `de-DE-Standard-A` | Voice of the spoken text (a Google text-to-speech voice, e.g. `en-GB-Standard-B`). |
    | `RPP_RAID_CALL_REPEAT` | `2` | How often the text is repeated in the call (1–5). |
 
-3. In Discord, run `/raidcall test` to get a test call.
+4. Test it: `/raidcall test` in Discord or **`!raidtest`** in the in-game team chat (at most once a minute).
 
 ## What triggers a call
 
@@ -28,5 +29,6 @@ The alarm has to reach the bot: pair the Smart Alarm with the bot in-game and wi
 ## Commands
 
 * `/raidcall status`: on or off, who is called, which alarms
+* `/raidcall add telegram:@name` / `/raidcall remove telegram:@name`: who gets called (per Discord server)
 * `/raidcall on` / `/raidcall off`: turn calls on or off for this Discord server (e.g. while you are online)
-* `/raidcall test`: place a test call now
+* `/raidcall test` or `!raidtest` in-game: place a test call now (also while calls are off)

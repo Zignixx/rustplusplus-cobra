@@ -35,6 +35,20 @@ module.exports = {
                 .setName('status')
                 .setDescription('Show whether raid calls are on and who gets called.'))
             .addSubcommand(subcommand => subcommand
+                .setName('add')
+                .setDescription('Add someone to call: Telegram @username or phone number with country code.')
+                .addStringOption(option => option
+                    .setName('telegram')
+                    .setDescription('@username or +49... (they have to send /start to @CallMeBot_txtbot once)')
+                    .setRequired(true)))
+            .addSubcommand(subcommand => subcommand
+                .setName('remove')
+                .setDescription('Remove someone added with /raidcall add.')
+                .addStringOption(option => option
+                    .setName('telegram')
+                    .setDescription('@username or phone number')
+                    .setRequired(true)))
+            .addSubcommand(subcommand => subcommand
                 .setName('on')
                 .setDescription('Turn raid calls on for this Discord server.'))
             .addSubcommand(subcommand => subcommand
@@ -42,7 +56,7 @@ module.exports = {
                 .setDescription('Turn raid calls off for this Discord server (e.g. while you are online).'))
             .addSubcommand(subcommand => subcommand
                 .setName('test')
-                .setDescription('Place a test call now.'));
+                .setDescription('Place a test call now (also in-game with !raidtest).'));
     },
 
     async execute(client, interaction) {
@@ -58,14 +72,33 @@ module.exports = {
             await client.interactionEditReply(interaction, DiscordEmbeds.getActionInfoEmbed(error ? 1 : 0, text));
         };
 
-        if (!RaidCall.configured) {
-            await reply('Raid calls are not set up: set RPP_RAID_CALL_TELEGRAM (Telegram @username or phone ' +
-                'number) for the bot and restart it. Every receiver has to send /start to @CallMeBot_txtbot ' +
-                'in Telegram once.', true);
-            return;
-        }
-
         switch (sub) {
+            case 'add': {
+                const added = RaidCall.addReceiver(guildId, interaction.options.getString('telegram'));
+                if (!added) {
+                    await reply('That is neither a Telegram username (@name, 5-32 letters, digits or _) nor a ' +
+                        'phone number with country code (+49...).', true);
+                    break;
+                }
+                client.log('Raid call', `Receiver ${added} added for guild ${guildId}.`);
+                await reply(`**${added}** gets raid calls now. They have to send /start to @CallMeBot_txtbot in ` +
+                    'Telegram once. Try it with /raidcall test or !raidtest in-game.');
+            } break;
+
+            case 'remove': {
+                const input = interaction.options.getString('telegram');
+                if (RaidCall.removeReceiver(guildId, input)) {
+                    client.log('Raid call', `Receiver ${input} removed for guild ${guildId}.`);
+                    await reply(`**${input}** gets no raid calls anymore.`);
+                }
+                else if (Config.raidCall.telegram.some(r => r.toLowerCase() === `${input}`.trim().toLowerCase())) {
+                    await reply(`${input} is set in RPP_RAID_CALL_TELEGRAM; remove it there and restart the bot.`, true);
+                }
+                else {
+                    await reply(`${input} is not in the list.`, true);
+                }
+            } break;
+
             case 'on':
             case 'off': {
                 RaidCall.setEnabled(guildId, sub === 'on');
@@ -74,14 +107,16 @@ module.exports = {
             } break;
 
             case 'test': {
-                const results = await RaidCall.call('Test vom Raid Alarm. Wenn du das hörst, funktioniert der Anruf.');
-                await reply(`Test call placed:\n${results.map(r => `• ${r}`).join('\n')}`);
+                const results = await RaidCall.test(guildId, interaction.member ? interaction.member.displayName : null);
+                if (typeof results === 'string') await reply(results, true);
+                else await reply(`Test call placed:\n${results.map(r => `• ${r}`).join('\n')}`);
             } break;
 
             default: {
+                const receivers = RaidCall.receivers(guildId);
                 const alarms = Config.raidCall.alarms.length ? Config.raidCall.alarms.join(', ') : 'every Smart Alarm';
                 await reply(`Raid calls are **${RaidCall.isEnabled(guildId) ? 'on' : 'off'}**.\n` +
-                    `Calls: ${Config.raidCall.telegram.join(', ')}\n` +
+                    `Calls: ${receivers.length ? receivers.join(', ') : 'nobody yet (add with /raidcall add)'}\n` +
                     `Alarms: ${alarms}\n` +
                     `Cooldown: ${Config.raidCall.cooldownSeconds} s · Voice: ${Config.raidCall.lang}`);
             } break;
