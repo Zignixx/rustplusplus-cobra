@@ -1,12 +1,15 @@
-FROM node:18
+# slim: no native compilation needed (gm uses graphicsmagick, ffmpeg-static ships a binary); git is required
+# for the rustplus.js git dependency
+FROM node:26-slim
 
-RUN apt-get update && apt-get install -y graphicsmagick && apt-get clean
+RUN apt-get update && apt-get install -y --no-install-recommends git ca-certificates graphicsmagick \
+    && apt-get clean && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
 COPY package.json /app/package.json
 COPY package-lock.json /app/package-lock.json
-RUN npm install
+RUN npm ci
 COPY . /app
 
 VOLUME [ "/app/credentials" ]

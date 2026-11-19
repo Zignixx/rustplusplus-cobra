@@ -4,8 +4,7 @@
     "description": "A NodeJS Discord Bot that uses the rustplus.js library to utilize the power of the Rust+ Companion App with additional Quality-of-Life features.",
     "main": "index.ts",
     "scripts": {
-        "start": "ts-node .",
-        "preinstall": "npx npm-force-resolutions",
+        "start": "tsx .",
         "test": "tsc --noEmit -p ."
     },
     "repository": {
@@ -19,27 +18,35 @@
     },
     "homepage": "https://github.com/alexemanuelol/rustplusplus#readme",
     "dependencies": {
-        "@discordjs/rest": "^2.5.1",
-        "@discordjs/voice": "^0.18.0",
-        "@formatjs/intl": "^2.6.9",
+        "@discordjs/rest": "^2.6.3",
+        "@discordjs/voice": "^0.19.2",
+        "@formatjs/intl": "^6.2.0",
         "@liamcottle/push-receiver": "^0.0.4",
         "@liamcottle/rustplus.js": "git+https://github.com/alexemanuelol/rustplus.js.git#089cfd3db1b04709911948bce669273139c6a124",
-        "axios": "^1.3.4",
+        "axios": "^1.21.1",
         "colors": "^1.4.0",
-        "discord-api-types": "^0.38.14",
-        "discord.js": "^14.21.0",
-        "ffmpeg-static": "^5.1.0",
-        "gm": "^1.25.0",
-        "jimp": "^0.22.7",
-        "libsodium-wrappers": "^0.7.11",
-        "lodash": "^4.17.21",
-        "translate": "^1.4.1",
-        "ts-node": "^10.9.2",
-        "typescript": "^5.8.3",
-        "winston": "^3.8.2"
+        "discord-api-types": "^0.38.59",
+        "discord.js": "^14.28.1",
+        "ffmpeg-static": "^5.3.0",
+        "gm": "^1.25.1",
+        "jimp": "^1.6.1",
+        "libsodium-wrappers": "^0.8.4",
+        "lodash": "^4.18.1",
+        "translate": "^3.1.1",
+        "tsx": "^4.23.15",
+        "typescript": "^7.0.2",
+        "winston": "^3.19.0"
     },
-    "resolutions": {
-        "jpeg-js": "0.4.4",
-        "protobufjs": "7.2.4"
+    "overrides": {
+        "protobufjs": "^7.6.6",
+        "form-data": "^4.0.6",
+        "qs": "^6.16.2",
+        "file-type": "^22.0.0",
+        "zod": "^4.6.6"
+    },
+    "allowScripts": {
+        "ffmpeg-static@5.3.0": true,
+        "esbuild": false,
+        "protobufjs": false
     }
 }

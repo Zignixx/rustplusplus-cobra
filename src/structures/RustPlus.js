@@ -21,7 +21,7 @@
 const Fs = require('fs');
 const Path = require('path');
 const RustPlusLib = require('@liamcottle/rustplus.js');
-const Translate = require('translate');
+const Translate = require('translate').default;
 
 const ApiEvents = require('../api/apiEvents.js');
 const Client = require('../../index.ts');
